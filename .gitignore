@@ -65,3 +65,7 @@ Thumbs.db
 
 # Alembic
 alembic/versions/*.pyc
+
+
+.codex/
+.roo/
