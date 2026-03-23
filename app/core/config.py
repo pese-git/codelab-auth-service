@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from_email: str = "noreply@codelab.local"
     smtp_use_tls: bool = True
+    smtp_timeout: int = 30  # seconds
+    smtp_max_retries: int = 3
+    send_welcome_email: bool = True
+    send_password_reset_email: bool = True
 
     # Logging
     log_level: str = "DEBUG"

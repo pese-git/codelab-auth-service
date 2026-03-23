@@ -1,57 +1,15 @@
 """Email service for sending confirmation emails"""
 
 import secrets
-import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.config import logger, settings
-from app.models.database import Base
-
-
-class EmailConfirmationToken(Base):
-    """Model for email confirmation tokens"""
-
-    __tablename__ = "email_confirmation_tokens"
-
-    # Primary key
-    id: Mapped[str] = mapped_column(
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
-
-    # Foreign key to user
-    user_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    # Token
-    token: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        unique=True,
-        index=True,
-    )
-
-    # Expiration timestamp
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
-    # Creation timestamp
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
-    )
+from app.models.email_confirmation_token import EmailConfirmationToken
+from app.models.user import User
 
 
 class EmailService:
@@ -84,49 +42,79 @@ class EmailService:
 
     async def send_confirmation_email(
         self,
-        email: str,
-        username: str,
-        confirmation_token: str,
-        confirmation_url: str | None = None,
+        user: User,
+        token: str,
+        db: AsyncSession | None = None,
     ) -> bool:
-        """
-        Send email confirmation message.
-        
+        """Send email confirmation message using EmailNotificationService
+
         Args:
-            email: Recipient email address
-            username: Username for personalization
-            confirmation_token: Token for email verification
-            confirmation_url: Full URL for confirmation (if None, URL will be constructed)
-            
+            user: User object
+            token: Email confirmation token
+            db: Database session for storing token
+
         Returns:
-            True if email sent successfully, False otherwise
+            True if email sent/queued successfully, False otherwise
         """
         try:
-            # For now, just log the confirmation email
-            # In production, this would integrate with SMTP service
-            if confirmation_url is None:
-                confirmation_url = f"https://auth.codelab.local/confirm-email?token={confirmation_token}"
-            
-            logger.info(
-                f"Email confirmation needed for {email}",
-                extra={
-                    "email": email,
-                    "username": username,
-                    "confirmation_url": confirmation_url,
-                },
+            # Import here to avoid circular imports
+            from app.services.email_notifications import EmailNotificationService
+            from app.services.audit_service import audit_service
+
+            # Create notification service
+            notification_service = EmailNotificationService()
+
+            # Send confirmation email (async, queued as background task)
+            success = await notification_service.send_confirmation_email(
+                user, token, background=True
             )
-            
-            # TODO: Implement actual email sending via SMTP
-            # Example structure:
-            # smtp_client = aiosmtplib.SMTP(settings.smtp_host, settings.smtp_port)
-            # await smtp_client.send_message(message)
-            
-            return True
-            
+
+            # Log to audit (if db session is available)
+            if db and success:
+                try:
+                    await audit_service.log_email_sent(
+                        db=db,
+                        user_id=user.id,
+                        template_name="confirmation",
+                        recipient=user.email,
+                    )
+                except Exception as audit_err:
+                    logger.warning(
+                        f"Failed to log confirmation email to audit: {audit_err}",
+                        extra={"user_id": user.id},
+                    )
+
+            if success:
+                logger.info(
+                    f"Confirmation email sent/queued for {user.email}",
+                    extra={"user_id": user.id, "email": user.email},
+                )
+            else:
+                logger.warning(
+                    f"Failed to send confirmation email to {user.email}",
+                    extra={"user_id": user.id, "email": user.email},
+                )
+                # Log failure to audit (if db session is available)
+                if db:
+                    try:
+                        await audit_service.log_email_failed(
+                            db=db,
+                            user_id=user.id,
+                            template_name="confirmation",
+                            error="Failed to send confirmation email",
+                        )
+                    except Exception as audit_err:
+                        logger.warning(
+                            f"Failed to log email failure to audit: {audit_err}",
+                            extra={"user_id": user.id},
+                        )
+
+            return success
+
         except Exception as e:
             logger.error(
-                f"Failed to send confirmation email to {email}: {e}",
-                extra={"email": email, "error": str(e)},
+                f"Error sending confirmation email to {user.email}: {e}",
+                extra={"user_id": user.id, "email": user.email},
             )
             return False
 
@@ -143,29 +131,98 @@ class EmailService:
         self,
         db: AsyncSession,
         token: str,
-    ) -> str | None:
-        """
-        Verify an email confirmation token.
-        
+    ) -> Optional[User]:
+        """Verify an email confirmation token and return associated user
+
         Args:
             db: Database session
             token: Token to verify
-            
+
         Returns:
-            User ID if token is valid, None otherwise
+            User object if token is valid and not expired, None otherwise
         """
-        # For now, just return a placeholder
-        # In production, this would query the database for the token
-        # and verify it hasn't expired
-        
-        logger.debug(f"Verifying confirmation token")
-        
-        # TODO: Implement token verification with database
-        # 1. Query email_confirmation_tokens table for matching token
-        # 2. Check if token has expired (expires_at > now)
-        # 3. Return user_id if valid, None otherwise
-        
-        return None
+        try:
+            from app.services.audit_service import audit_service
+            
+            # Query for the token
+            result = await db.execute(
+                select(EmailConfirmationToken).where(
+                    EmailConfirmationToken.token == token
+                )
+            )
+            token_record = result.scalars().first()
+
+            if not token_record:
+                logger.warning(f"Token not found in database")
+                # Log token verification failure to audit
+                try:
+                    await audit_service.log_email_confirmation_failed(
+                        db=db,
+                        reason="token_not_found",
+                    )
+                except Exception as audit_err:
+                    logger.warning(f"Failed to log token failure to audit: {audit_err}")
+                return None
+
+            # Check if token has expired
+            now = datetime.now(timezone.utc)
+            if token_record.expires_at < now:
+                logger.warning(
+                    f"Token expired at {token_record.expires_at}",
+                    extra={"user_id": token_record.user_id},
+                )
+                # Log token expiration to audit
+                try:
+                    await audit_service.log_email_confirmation_failed(
+                        db=db,
+                        reason="token_expired",
+                    )
+                except Exception as audit_err:
+                    logger.warning(f"Failed to log token expiration to audit: {audit_err}")
+                return None
+
+            # Get user by user_id
+            from app.models.user import User
+
+            result = await db.execute(
+                select(User).where(User.id == token_record.user_id)
+            )
+            user = result.scalars().first()
+
+            if not user:
+                logger.error(
+                    f"User not found for token",
+                    extra={"user_id": token_record.user_id},
+                )
+                # Log user not found to audit
+                try:
+                    await audit_service.log_email_confirmation_failed(
+                        db=db,
+                        reason="user_not_found",
+                    )
+                except Exception as audit_err:
+                    logger.warning(f"Failed to log user not found to audit: {audit_err}")
+                return None
+
+            logger.info(
+                f"Token verified successfully for user {user.username}",
+                extra={"user_id": user.id},
+            )
+            
+            # Log successful token verification to audit
+            try:
+                await audit_service.log_email_confirmation_token_generated(
+                    db=db,
+                    user_id=user.id,
+                )
+            except Exception as audit_err:
+                logger.warning(f"Failed to log token verification to audit: {audit_err}")
+
+            return user
+
+        except Exception as e:
+            logger.error(f"Error verifying confirmation token: {e}")
+            return None
 
 
 # Global instance

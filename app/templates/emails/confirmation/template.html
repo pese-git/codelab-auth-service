@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block header %}
+<h1>Confirm Your Email</h1>
+{% endblock %}
+
+{% block content %}
+<h2>Hi {{ username }},</h2>
+
+<p>To complete your registration and verify your email address, please click the confirmation link below:</p>
+
+<p class="text-center">
+    <a href="{{ confirmation_link }}" class="button">Confirm Email Address</a>
+</p>
+
+<p>Or copy and paste this link in your browser:</p>
+<p><code>{{ confirmation_link }}</code></p>
+
+<p><strong>Link expires at:</strong> {{ expires_at }}</p>
+
+<div class="divider"></div>
+
+<p class="text-muted">
+    This confirmation link is valid for 24 hours. If it expires, you can request a new one from your account settings.
+</p>
+
+<p class="text-muted">
+    If you didn't request this confirmation, please ignore this email.
+</p>
+{% endblock %}

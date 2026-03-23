@@ -172,6 +172,82 @@ class AuditService:
             error_message=f"Security incident: {incident_type}",
         )
 
+    async def log_email_sent(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        template_name: str,
+        recipient: str,
+    ) -> AuditLog:
+        """Log successful email sending"""
+        return await self.log_event(
+            db=db,
+            event_type="email_sent",
+            success=True,
+            user_id=user_id,
+            event_data={"template": template_name, "recipient": recipient},
+        )
+
+    async def log_email_failed(
+        self,
+        db: AsyncSession,
+        user_id: str | None,
+        template_name: str,
+        error: str,
+        retry_count: int = 0,
+    ) -> AuditLog:
+        """Log failed email sending"""
+        return await self.log_event(
+            db=db,
+            event_type="email_failed",
+            success=False,
+            user_id=user_id,
+            event_data={
+                "template": template_name,
+                "retry_count": retry_count,
+            },
+            error_message=error,
+        )
+
+    async def log_email_confirmation_token_generated(
+        self,
+        db: AsyncSession,
+        user_id: str,
+    ) -> AuditLog:
+        """Log email confirmation token generation"""
+        return await self.log_event(
+            db=db,
+            event_type="email_confirmation_token_generated",
+            success=True,
+            user_id=user_id,
+        )
+
+    async def log_email_confirmation_success(
+        self,
+        db: AsyncSession,
+        user_id: str,
+    ) -> AuditLog:
+        """Log successful email confirmation"""
+        return await self.log_event(
+            db=db,
+            event_type="email_confirmed",
+            success=True,
+            user_id=user_id,
+        )
+
+    async def log_email_confirmation_failed(
+        self,
+        db: AsyncSession,
+        reason: str,
+    ) -> AuditLog:
+        """Log failed email confirmation"""
+        return await self.log_event(
+            db=db,
+            event_type="email_confirmation_failed",
+            success=False,
+            error_message=reason,
+        )
+
     async def log(
         self,
         db: AsyncSession,

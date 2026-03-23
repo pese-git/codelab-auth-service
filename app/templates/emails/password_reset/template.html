@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block header %}
+<h1>Password Reset Request</h1>
+{% endblock %}
+
+{% block content %}
+<h2>Hi {{ username }},</h2>
+
+<p>We received a request to reset your CodeLab password. To proceed with resetting your password, click the link below:</p>
+
+<p class="text-center">
+    <a href="{{ reset_link }}" class="button">Reset Password</a>
+</p>
+
+<p>Or copy and paste this link in your browser:</p>
+<p><code>{{ reset_link }}</code></p>
+
+<p><strong>Link expires at:</strong> {{ expires_at }}</p>
+
+<div class="divider"></div>
+
+<p class="text-muted">
+    This reset link is valid for 24 hours. If you don't use it, your password will remain unchanged.
+</p>
+
+<p class="text-muted">
+    If you didn't request a password reset, please ignore this email and your account will remain secure. If you believe your account has been compromised, please contact our support team immediately.
+</p>
+{% endblock %}

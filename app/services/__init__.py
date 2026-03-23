@@ -3,6 +3,10 @@
 from app.services.audit_service import audit_service
 from app.services.auth_service import auth_service
 from app.services.brute_force_protection import brute_force_protection
+from app.services.email_notifications import EmailNotificationService
+from app.services.email_retry import EmailRetryService
+from app.services.email_sender import SMTPEmailSender
+from app.services.email_templates import EmailMessage, EmailTemplateEngine
 from app.services.jwks_service import jwks_service
 from app.services.oauth_client_service import oauth_client_service
 from app.services.rate_limiter import rate_limiter
@@ -20,4 +24,9 @@ __all__ = [
     "rate_limiter",
     "brute_force_protection",
     "audit_service",
+    "EmailTemplateEngine",
+    "EmailMessage",
+    "SMTPEmailSender",
+    "EmailRetryService",
+    "EmailNotificationService",
 ]

@@ -1,5 +1,6 @@
 """User registration endpoint"""
 
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,7 @@ from app.schemas.user import UserRegister, UserRegistrationResponse
 from app.services.user_service import user_service
 from app.services.audit_service import audit_service
 from app.services.email_service import email_service
+from app.services.email_notifications import EmailNotificationService
 
 router = APIRouter(prefix="/api/v1", tags=["Registration"])
 
@@ -70,6 +72,52 @@ async def register(
                 "client_ip": client_ip,
             }
         )
+        
+        # Schedule background tasks for email sending (graceful degradation)
+        try:
+            notification_service = EmailNotificationService()
+            
+            # Send welcome email as background task
+            if settings.send_welcome_email:
+                try:
+                    asyncio.create_task(
+                        notification_service.send_welcome_email(user, background=False)
+                    )
+                    logger.debug(
+                        f"Welcome email task scheduled for user {user.id}",
+                        extra={"user_id": user.id},
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to schedule welcome email task: {e}",
+                        extra={"user_id": user.id},
+                    )
+            
+            # Send confirmation email as background task if required
+            if settings.require_email_confirmation:
+                try:
+                    # Generate confirmation token
+                    token = await email_service.generate_confirmation_token(user.id)
+                    
+                    # Schedule confirmation email
+                    asyncio.create_task(
+                        email_service.send_confirmation_email(user, token, db)
+                    )
+                    logger.debug(
+                        f"Confirmation email task scheduled for user {user.id}",
+                        extra={"user_id": user.id},
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to schedule confirmation email task: {e}",
+                        extra={"user_id": user.id},
+                    )
+        except Exception as e:
+            # Log but don't fail registration - graceful degradation
+            logger.error(
+                f"Error scheduling email tasks: {e}",
+                extra={"user_id": user.id},
+            )
         
         # Return response with Location header
         return UserRegistrationResponse.model_validate(user)
@@ -155,7 +203,7 @@ async def register(
             )
 
 
-@router.post("/confirm-email")
+@router.get("/confirm-email")
 async def confirm_email(
     request: Request,
     token: str,
@@ -165,7 +213,7 @@ async def confirm_email(
     Confirm user email address using a confirmation token.
     
     Args:
-        token: Email confirmation token
+        token: Email confirmation token (query parameter)
         
     Returns:
         - 200 OK: Email confirmed successfully
@@ -174,10 +222,10 @@ async def confirm_email(
     client_ip = request.client.host if request.client else "unknown"
     
     try:
-        # Verify confirmation token
-        user_id = await email_service.verify_confirmation_token(db, token)
+        # Verify confirmation token and get user
+        user = await email_service.verify_confirmation_token(db, token)
         
-        if not user_id:
+        if not user:
             # Token is invalid or expired
             await audit_service.log(
                 db=db,
@@ -189,19 +237,20 @@ async def confirm_email(
                 },
             )
             
+            logger.warning(
+                f"Email confirmation failed: invalid or expired token",
+                extra={
+                    "event_type": "EMAIL_CONFIRMATION_FAILED",
+                    "client_ip": client_ip,
+                },
+            )
+            
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired confirmation token",
             )
         
         # Update user email_confirmed flag
-        user = await user_service.get_by_id(db, user_id)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
-        
         user.email_confirmed = True
         await db.commit()
         
@@ -209,7 +258,7 @@ async def confirm_email(
         await audit_service.log(
             db=db,
             event_type="EMAIL_CONFIRMED",
-            user_id=user_id,
+            user_id=user.id,
             details={
                 "email": user.email,
                 "client_ip": client_ip,
@@ -218,16 +267,19 @@ async def confirm_email(
         )
         
         logger.info(
-            f"Email confirmed for user {user_id}",
+            f"Email confirmed for user {user.id}",
             extra={
                 "event_type": "EMAIL_CONFIRMED",
-                "user_id": user_id,
+                "user_id": user.id,
                 "email": user.email,
             }
         )
         
-        return {"message": "Email confirmed successfully"}
+        return {"message": "Email confirmed successfully", "user_id": user.id}
     
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         logger.error(
             f"Email confirmation error: {e}",
