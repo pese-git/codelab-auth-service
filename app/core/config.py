@@ -46,6 +46,20 @@ class Settings(BaseSettings):
     brute_force_threshold: int = 5  # failed attempts
     brute_force_lockout_duration: int = 900  # 15 minutes in seconds
 
+    # Registration
+    registration_rate_limit: int = 10  # requests per minute for /api/v1/register
+    require_email_confirmation: bool = True  # Require email confirmation after registration
+    suggest_usernames: bool = True  # Suggest usernames when username is already taken
+    audit_log_retention_days: int = 90  # Days to retain audit logs
+
+    # SMTP Configuration for email
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str = "noreply@codelab.local"
+    smtp_use_tls: bool = True
+
     # Logging
     log_level: str = "DEBUG"
 

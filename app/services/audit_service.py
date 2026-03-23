@@ -172,6 +172,47 @@ class AuditService:
             error_message=f"Security incident: {incident_type}",
         )
 
+    async def log(
+        self,
+        db: AsyncSession,
+        event_type: str,
+        user_id: str | None = None,
+        success: bool | None = None,
+        details: dict | None = None,
+    ) -> AuditLog:
+        """
+        Generic log method for any event type.
+        
+        Args:
+            db: Database session
+            event_type: Type of event
+            user_id: User ID (if applicable)
+            success: Whether the event was successful (defaults to None for neutral events)
+            details: Additional event details
+            
+        Returns:
+            Created AuditLog record
+        """
+        # Determine success status from event type if not specified
+        if success is None:
+            success = not event_type.endswith("_failed") and "failed" not in event_type.lower()
+        
+        # Extract specific fields from details dict if provided
+        client_ip = details.get("client_ip") if details else None
+        user_agent = details.get("user_agent") if details else None
+        error_msg = details.get("failure_reason") if details else None
+        
+        return await self.log_event(
+            db=db,
+            event_type=event_type,
+            success=success,
+            user_id=user_id,
+            event_data=details,
+            ip_address=client_ip,
+            user_agent=user_agent,
+            error_message=error_msg,
+        )
+
 
 # Global instance
 audit_service = AuditService()

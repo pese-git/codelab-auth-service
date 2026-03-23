@@ -1,13 +1,16 @@
 """User service for user management"""
 
+import random
+import string
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import logger
+from app.core.config import logger, settings
 from app.models.user import User
-from app.schemas.user import UserCreate, UserUpdate
+from app.schemas.user import UserCreate, UserRegister, UserUpdate
 from app.utils.crypto import hash_password, verify_password
 
 
@@ -272,6 +275,101 @@ class UserService:
         logger.info(f"User deleted: {user_id}")
 
         return True
+
+    async def register_user(
+        self,
+        db: AsyncSession,
+        user_data: UserRegister,
+    ) -> User:
+        """
+        Register a new user with full validation and race condition handling.
+        
+        Args:
+            db: Database session
+            user_data: User registration data
+            
+        Returns:
+            Created user
+            
+        Raises:
+            ValueError: If email or username already exists
+            RuntimeError: If database constraint violation occurs (race condition)
+        """
+        # Check if email already exists
+        existing_email = await self.get_by_email(db, user_data.email)
+        if existing_email:
+            raise ValueError(f"Email already registered")
+
+        # Check if username already exists
+        existing_username = await self.get_by_username(db, user_data.username)
+        if existing_username:
+            raise ValueError(f"Username already taken")
+
+        # Hash password with bcrypt (cost factor 12 is default in passlib)
+        password_hash = hash_password(user_data.password)
+
+        # Create user with email_confirmed based on config
+        user = User(
+            username=user_data.username,
+            email=user_data.email,
+            password_hash=password_hash,
+            email_confirmed=not settings.require_email_confirmation,
+        )
+
+        db.add(user)
+        
+        try:
+            await db.commit()
+            await db.refresh(user)
+            logger.info(f"User registered: {user.id} ({user.username})")
+            return user
+        except IntegrityError as e:
+            await db.rollback()
+            # Handle race condition where duplicate was inserted concurrently
+            if "unique constraint" in str(e).lower():
+                if "email" in str(e).lower():
+                    raise RuntimeError("Email already registered (race condition)")
+                elif "username" in str(e).lower():
+                    raise RuntimeError("Username already taken (race condition)")
+            raise RuntimeError("Database error during registration") from e
+
+    def generate_username_suggestions(
+        self,
+        base_username: str,
+        count: int = 5,
+    ) -> list[str]:
+        """
+        Generate username suggestions based on a base username.
+        
+        Args:
+            base_username: Original username to base suggestions on
+            count: Number of suggestions to generate
+            
+        Returns:
+            List of suggested usernames
+        """
+        if not settings.suggest_usernames:
+            return []
+
+        suggestions = []
+        
+        # Suggestion 1: Add numbers
+        suggestions.append(f"{base_username}{random.randint(1000, 9999)}")
+        
+        # Suggestion 2: Add underscore and numbers
+        suggestions.append(f"{base_username}_{random.randint(100, 999)}")
+        
+        # Suggestion 3: Add digits scattered
+        digits = "".join(random.choices(string.digits, k=2))
+        suggestions.append(f"{base_username}{digits}")
+        
+        # Suggestion 4: Add common suffix
+        suggestions.append(f"{base_username}_official")
+        
+        # Suggestion 5: Swap characters or add underscore
+        suggestions.append(f"_{base_username}")
+
+        return suggestions[:count]
 
 
 # Global instance

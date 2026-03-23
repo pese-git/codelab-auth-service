@@ -37,11 +37,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if settings.is_development and ip_address in ("127.0.0.1", "localhost", "::1"):
             return await call_next(request)
 
+        # Determine rate limit based on endpoint
+        limit = settings.rate_limit_per_ip
+        window = 60
+        
         # Check rate limit for IP
-        is_allowed, remaining = await rate_limiter.check_rate_limit_ip(ip_address)
+        is_allowed, remaining = await rate_limiter.check_rate_limit_ip(
+            ip_address, limit=limit, window=window
+        )
 
         if not is_allowed:
-            logger.warning(f"Rate limit exceeded for IP: {ip_address}")
+            logger.warning(f"Rate limit exceeded for IP: {ip_address} on {request.url.path}")
             return JSONResponse(
                 status_code=429,
                 content={
@@ -49,14 +55,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "error_description": "Too many requests. Please try again later.",
                 },
                 headers={
-                    "X-RateLimit-Limit": "5",
+                    "X-RateLimit-Limit": str(limit),
                     "X-RateLimit-Remaining": str(remaining),
-                    "Retry-After": "60",
+                    "Retry-After": str(window),
                 },
             )
 
         # Add rate limit headers to response
         response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(limit)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
 
         return response

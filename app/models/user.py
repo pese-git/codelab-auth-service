@@ -51,6 +51,11 @@ class User(Base):
         default=False,
         nullable=False,
     )
+    email_confirmed: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
