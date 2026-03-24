@@ -19,6 +19,7 @@ class EmailService:
         self,
         user_id: str,
         db: AsyncSession | None = None,
+        expires_in_hours: int = 24,
     ) -> str:
         """
         Generate a secure confirmation token for email verification.
@@ -26,6 +27,7 @@ class EmailService:
         Args:
             user_id: User ID to generate token for
             db: Database session (optional, for storing token)
+            expires_in_hours: Token expiration time in hours (default: 24)
             
         Returns:
             Generated token string
@@ -39,6 +41,63 @@ class EmailService:
         )
         
         return token
+
+    async def save_confirmation_token(
+        self,
+        user_id: str,
+        token: str,
+        db: AsyncSession,
+        expires_in_hours: int = 24,
+        commit: bool = True,
+    ) -> bool:
+        """
+        Save confirmation token to database.
+        
+        Args:
+            user_id: User ID
+            token: Confirmation token
+            db: Database session
+            expires_in_hours: Token expiration time in hours (default: 24)
+            commit: Whether to commit the transaction (default: True)
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        try:
+            # Calculate expiration time
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)
+            
+            # Create token record
+            token_record = EmailConfirmationToken(
+                user_id=user_id,
+                token=token,
+                expires_at=expires_at,
+            )
+            
+            # Save to database
+            db.add(token_record)
+            await db.flush()  # Flush to ensure the record is inserted
+            
+            if commit:
+                await db.commit()  # Commit the transaction
+            
+            logger.info(
+                f"Confirmation token saved for user {user_id}",
+                extra={"user_id": user_id, "expires_at": expires_at},
+            )
+            
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to save confirmation token for user {user_id}: {e}",
+                extra={"user_id": user_id},
+            )
+            # Rollback on error
+            try:
+                await db.rollback()
+            except Exception as rollback_err:
+                logger.error(f"Failed to rollback: {rollback_err}")
+            return False
 
     async def send_confirmation_email(
         self,

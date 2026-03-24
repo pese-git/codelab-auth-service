@@ -5,7 +5,7 @@ import logging
 import random
 from typing import Optional
 
-from aiosmtplib import SMTPServerError
+from aiosmtplib import SMTPResponseException
 
 from app.services.email_sender import SMTPEmailSender
 from app.services.email_templates import EmailMessage
@@ -72,7 +72,7 @@ class EmailRetryService:
                 self._log_attempt(message, attempt, error="Permanent error")
                 return False
 
-            except (SMTPServerError, asyncio.TimeoutError, ConnectionError) as e:
+            except (SMTPResponseException, asyncio.TimeoutError, ConnectionError) as e:
                 self._log_attempt(message, attempt, error=e)
 
                 # Check if we should retry
@@ -154,15 +154,15 @@ class EmailRetryService:
             True if we should retry, False if permanent
 
         Retryable errors:
-            - SMTPServerError with 4xx codes
+            - SMTPResponseException with 4xx codes
             - asyncio.TimeoutError
             - ConnectionError
 
         Non-retryable:
-            - SMTPServerError with 5xx codes
+            - SMTPResponseException with 5xx codes
             - Others
         """
-        if isinstance(error, SMTPServerError):
+        if isinstance(error, SMTPResponseException):
             # 4xx are temporary, 5xx are permanent
             return 400 <= error.code < 500
 

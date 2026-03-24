@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Optional
 
-from aiosmtplib import SMTP, SMTPAuthenticationError, SMTPServerError
+from aiosmtplib import SMTP, SMTPAuthenticationError, SMTPResponseException
 
 from app.core.config import settings
 from app.services.email_templates import EmailMessage
@@ -42,7 +42,7 @@ class SMTPEmailSender:
             True if email sent successfully, False otherwise
 
         Raises:
-            SMTPServerError: For 4xx errors (retryable)
+            SMTPResponseException: For 4xx errors (retryable)
             asyncio.TimeoutError: On connection timeout (retryable)
             ConnectionError: On connection issues (retryable)
 
@@ -92,7 +92,7 @@ class SMTPEmailSender:
             )
             return False
 
-        except SMTPServerError as e:
+        except SMTPResponseException as e:
             # Check error code
             if 500 <= e.code < 600:
                 # 5xx errors are permanent, don't retry

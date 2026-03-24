@@ -99,14 +99,28 @@ async def register(
                     # Generate confirmation token
                     token = await email_service.generate_confirmation_token(user.id)
                     
-                    # Schedule confirmation email
-                    asyncio.create_task(
-                        email_service.send_confirmation_email(user, token, db)
+                    # Save token to database
+                    token_saved = await email_service.save_confirmation_token(
+                        user_id=user.id,
+                        token=token,
+                        db=db,
+                        expires_in_hours=24,
                     )
-                    logger.debug(
-                        f"Confirmation email task scheduled for user {user.id}",
-                        extra={"user_id": user.id},
-                    )
+                    
+                    if token_saved:
+                        # Schedule confirmation email
+                        asyncio.create_task(
+                            email_service.send_confirmation_email(user, token, db)
+                        )
+                        logger.debug(
+                            f"Confirmation email task scheduled for user {user.id}",
+                            extra={"user_id": user.id},
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to save confirmation token for user {user.id}",
+                            extra={"user_id": user.id},
+                        )
                 except Exception as e:
                     logger.warning(
                         f"Failed to schedule confirmation email task: {e}",
