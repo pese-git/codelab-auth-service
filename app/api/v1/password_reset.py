@@ -58,7 +58,7 @@ async def request_password_reset(
     try:
         # Rate limiting by email
         is_allowed, remaining = await rate_limiter.check_rate_limit_username(
-            email=data.email,
+            username=data.email,
             limit=settings.password_reset_request_limit,
             window=3600,  # 1 hour
         )
