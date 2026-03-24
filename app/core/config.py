@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     suggest_usernames: bool = True  # Suggest usernames when username is already taken
     audit_log_retention_days: int = 90  # Days to retain audit logs
 
+    # Password Reset
+    password_reset_request_limit: int = 3  # requests per hour per email
+    password_reset_token_expiration_minutes: int = 30  # token TTL
+
     # SMTP Configuration for email
     smtp_host: str = "localhost"
     smtp_port: int = 587

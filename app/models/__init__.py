@@ -3,6 +3,7 @@
 from app.models.audit_log import AuditLog
 from app.models.database import Base, close_db, get_db, init_db
 from app.models.oauth_client import OAuthClient
+from app.models.password_reset_token import PasswordResetToken
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
@@ -15,4 +16,5 @@ __all__ = [
     "OAuthClient",
     "RefreshToken",
     "AuditLog",
+    "PasswordResetToken",
 ]
