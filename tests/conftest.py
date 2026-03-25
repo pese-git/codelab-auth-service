@@ -1,12 +1,24 @@
 """Shared test fixtures and configuration"""
 
 import asyncio
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from dataclasses import dataclass
 from datetime import datetime
 
 import pytest
+
+
+# Configure pytest markers for integration tests
+def pytest_configure(config):
+    """Register custom pytest markers"""
+    config.addinivalue_line(
+        "markers", "integration: mark test as an integration test"
+    )
+    config.addinivalue_line(
+        "markers", "asyncio: mark test as async"
+    )
 
 
 # Define mock objects without importing from app.models to avoid engine initialization
@@ -130,3 +142,14 @@ def mock_audit_service():
     mock.log_email_confirmation_success = AsyncMock()
     mock.log_email_confirmation_failed = AsyncMock()
     return mock
+
+
+# Integration test markers configuration
+@pytest.fixture(scope="session")
+def integration_test_config():
+    """Configuration for integration tests"""
+    return {
+        "mailhog_host": os.environ.get("MAILHOG_HOST", "localhost"),
+        "mailhog_smtp_port": int(os.environ.get("MAILHOG_SMTP_PORT", "1025")),
+        "mailhog_http_port": int(os.environ.get("MAILHOG_HTTP_PORT", "8025")),
+    }
