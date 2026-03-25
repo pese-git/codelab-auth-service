@@ -1,14 +1,14 @@
 # Резюме проекта Auth Service
 
-**Версия:** 1.0.0
-**Дата:** 20 января 2026
-**Статус:** ✅ Реализовано
+**Версия:** 1.1.0
+**Дата:** 25 марта 2026
+**Статус:** ✅ Реализовано (с Email Integration)
 
 ---
 
 ## Обзор
 
-Auth Service — микросервис аутентификации и авторизации для платформы CodeLab, реализующий OAuth2 Authorization Server с поддержкой Password Grant и Refresh Token Grant.
+Auth Service — микросервис аутентификации и авторизации для платформы CodeLab, реализующий OAuth2 Authorization Server с поддержкой Password Grant и Refresh Token Grant, а также SMTP интеграцией для отправки email уведомлений при регистрации и важных событиях в системе.
 
 ---
 
@@ -78,18 +78,45 @@ Auth Service — микросервис аутентификации и авто
 - Извлечение user_id из токенов
 
 ### 4. [README](../README.md)
-**Объем:** ~400 строк  
+**Объем:** ~500+ строк  
 **Содержание:**
 - Быстрый старт
 - API endpoints с примерами
+- Email Notifications секция (новое)
 - Структура проекта
 - Руководство по разработке
-- Конфигурация
+- Конфигурация SMTP
 - Безопасность
 - Мониторинг
 - Тестирование
 - Troubleshooting
 - Roadmap
+
+### 5. [Email Setup Guide](EMAIL_SETUP.md) ✨ НОВОЕ
+**Объем:** ~400+ строк  
+**Содержание:**
+- Инструкции по настройке SMTP для различных провайдеров
+- SendGrid, AWS SES, Mailgun конфигурация
+- MailHog для локальной разработки
+- Примеры `.env` файлов
+- Troubleshooting guide для email проблем
+
+### 6. [Integration Tests Documentation](INTEGRATION_TESTS.md) ✨ НОВОЕ
+**Объем:** ~300+ строк  
+**Содержание:**
+- Инструкции по запуску integration тестов
+- Тестирование email отправки
+- MailHog использование в тестах
+- Примеры тестовых сценариев
+
+### 7. [QA Report - SMTP Integration](QA_REPORT_SMTP.md) ✨ НОВОЕ
+**Объем:** ~500+ строк  
+**Содержание:**
+- Результаты QA тестирования (Phases 9-10)
+- 84 тестов: 70 unit + 14 integration
+- Coverage: 85%
+- Тестовые сценарии и результаты
+- Обнаруженные баги и их разрешение
 
 ---
 
@@ -507,6 +534,94 @@ Auth Service — микросервис аутентификации и авто
 - Реализовать Refresh Token Grant
 - Интегрировать с Gateway
 - Провести первые тесты
+
+---
+
+## SMTP Email Integration ✨ НОВОЕ
+
+### Обзор
+
+К базовому Auth Service добавлена полная SMTP интеграция для отправки email уведомлений при регистрации пользователей и других важных событиях.
+
+### Функциональность
+
+**Типы email:**
+- Welcome email — при успешной регистрации
+- Email confirmation — верификация email адреса
+- Password reset — сброс пароля
+
+### Архитектура
+
+**Компоненты:**
+- `EmailTemplateEngine` — рендеринг Jinja2 шаблонов
+- `SMTPEmailSender` — асинхронная отправка через SMTP
+- `EmailRetryService` — retry логика с exponential backoff
+- `EmailNotificationService` — управление отправкой email
+- `EmailService` — интеграция с основным сервисом
+
+**Особенности:**
+- Асинхронная обработка в background (не блокирует API)
+- Retry логика с exponential backoff и jitter
+- Graceful degradation (ошибки email не влияют на основной процесс)
+- Поддержка различных SMTP провайдеров (Gmail, SendGrid, AWS SES и т.д.)
+- MailHog для локальной разработки
+
+### Конфигурация
+
+```bash
+# SMTP сервер
+AUTH_SERVICE__SMTP_HOST=smtp.gmail.com
+AUTH_SERVICE__SMTP_PORT=587
+AUTH_SERVICE__SMTP_USERNAME=user@gmail.com
+AUTH_SERVICE__SMTP_PASSWORD=app-password
+AUTH_SERVICE__SMTP_FROM_EMAIL=noreply@codelab.com
+
+# Опции
+AUTH_SERVICE__SMTP_USE_TLS=true          # Использовать STARTTLS
+AUTH_SERVICE__SMTP_TIMEOUT=30            # Timeout в секундах
+AUTH_SERVICE__SMTP_MAX_RETRIES=3         # Максимум попыток
+
+# Управление
+AUTH_SERVICE__SEND_WELCOME_EMAIL=true
+AUTH_SERVICE__REQUIRE_EMAIL_CONFIRMATION=true
+AUTH_SERVICE__SEND_PASSWORD_RESET_EMAIL=true
+```
+
+### Новые Endpoints
+
+**POST /api/v1/register** — обновлено
+- При успешной регистрации отправляются email уведомления в background
+- Ошибки email не влияют на результат (201 Created всё равно)
+
+**GET /api/v1/confirm-email** — новый
+- Подтверждение email адреса по токену
+- Параметр: `token` (query)
+- Ответ: 200 OK или 400 Bad Request
+
+### API Endpoints для Email
+
+Полная документация в разделе 11 файла [`TECHNICAL_SPECIFICATION.md`](TECHNICAL_SPECIFICATION.md#11-email-notifications-smtp-integration).
+
+### Security
+
+- ✅ Маскирование email адресов в логах
+- ✅ SMTP credentials не логируются
+- ✅ TLS/STARTTLS для безопасной передачи
+- ✅ Tokens одноразовые (удаляются после использования)
+- ✅ Exponential backoff предотвращает spam
+
+### Тестирование
+
+**84 тестов**: 70 unit + 14 integration
+- Покрытие: 85%
+- Phases 9-10 успешно завершены
+- Все тесты проходят
+
+### Документация
+
+1. [Email Setup Guide](EMAIL_SETUP.md) — настройка SMTP для различных провайдеров
+2. [Integration Tests Guide](INTEGRATION_TESTS.md) — запуск integration тестов
+3. [QA Report](QA_REPORT_SMTP.md) — результаты QA тестирования
 
 ---
 

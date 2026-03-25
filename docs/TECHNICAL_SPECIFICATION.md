@@ -671,7 +671,269 @@ CREATE INDEX idx_audit_logs_success ON audit_logs(success);
 
 ---
 
-## 11. Производительность и масштабирование
+## 11. Email Notifications (SMTP Integration)
+
+### 11.1 Обзор
+
+Auth Service поддерживает отправку email уведомлений при важных событиях в системе. Функциональность реализована через интеграцию SMTP с поддержкой асинхронной обработки в background.
+
+**Типы уведомлений:**
+- Welcome email — при регистрации пользователя
+- Email confirmation — верификация email адреса
+- Password reset — сброс пароля
+
+### 11.2 SMTP Конфигурация
+
+**Переменные окружения:**
+
+```bash
+# SMTP сервер
+AUTH_SERVICE__SMTP_HOST=smtp.gmail.com           # Хост SMTP сервера
+AUTH_SERVICE__SMTP_PORT=587                      # Порт (обычно 587 для TLS, 465 для SSL)
+AUTH_SERVICE__SMTP_USERNAME=your-email@gmail.com # Имя пользователя
+AUTH_SERVICE__SMTP_PASSWORD=your-app-password    # Пароль или app-specific password
+AUTH_SERVICE__SMTP_FROM_EMAIL=noreply@codelab.com # Email отправителя
+
+# Опции
+AUTH_SERVICE__SMTP_USE_TLS=true                  # Использовать STARTTLS (по умолчанию true)
+AUTH_SERVICE__SMTP_TIMEOUT=30                    # Timeout соединения в секундах
+AUTH_SERVICE__SMTP_MAX_RETRIES=3                 # Максимум попыток отправки
+
+# Управление функциями
+AUTH_SERVICE__SEND_WELCOME_EMAIL=true            # Отправлять приветственные письма
+AUTH_SERVICE__REQUIRE_EMAIL_CONFIRMATION=true    # Требовать подтверждение email
+AUTH_SERVICE__SEND_PASSWORD_RESET_EMAIL=true     # Отправлять письма сброса пароля
+```
+
+**Поддерживаемые SMTP провайдеры:**
+
+| Провайдер | Host | Port | TLS | Authentication |
+|-----------|------|------|-----|----------------|
+| Gmail | smtp.gmail.com | 587 | ✅ | App password |
+| SendGrid | smtp.sendgrid.net | 587 | ✅ | API Key as password |
+| AWS SES | email-smtp.{region}.amazonaws.com | 587 | ✅ | SMTP credentials |
+| Mailgun | smtp.mailgun.org | 587 | ✅ | postmaster@domain |
+| MailHog (dev) | mailhog | 1025 | ❌ | None required |
+
+### 11.3 Email API Endpoints
+
+#### POST /api/v1/register
+
+**Обновленное поведение:** При успешной регистрации отправляются email уведомления:
+
+```python
+# После создания пользователя:
+# 1. Отправка welcome email (асинхронно)
+# 2. Если require_email_confirmation=True: отправка confirmation email (асинхронно)
+# 3. Ошибки email не влияют на результат регистрации (201 Created)
+```
+
+**Ответ:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "username": "john_doe",
+  "email": "john@example.com",
+  "created_at": "2026-03-25T06:00:00Z",
+  "is_verified": false
+}
+```
+
+#### GET /api/v1/confirm-email
+
+**Назначение:** Подтверждение email адреса по токену
+
+**Параметры:**
+- `token` (query, required): confirmation token из email
+
+**Запрос:**
+```http
+GET /api/v1/confirm-email?token=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**Ответ (200 OK):**
+```json
+{
+  "message": "Email confirmed successfully",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Ошибки:**
+```json
+// 400 Bad Request - невалидный токен
+{
+  "error": "invalid_token",
+  "error_description": "Confirmation token is invalid or expired"
+}
+
+// 400 Bad Request - токен уже использован
+{
+  "error": "token_already_used",
+  "error_description": "This confirmation token has already been used"
+}
+```
+
+### 11.4 Email Templates
+
+Шаблоны хранятся в `app/templates/emails/` и используют Jinja2 для динамического контента.
+
+**Структура:**
+
+```
+app/templates/emails/
+├── base.html                    # Базовый layout
+├── welcome/
+│   ├── template.html            # HTML версия
+│   └── subject.txt              # Тема письма
+├── confirmation/
+│   ├── template.html
+│   └── subject.txt
+└── password_reset/
+    ├── template.html
+    └── subject.txt
+```
+
+**Переменные в шаблонах:**
+
+| Шаблон | Переменные |
+|--------|-----------|
+| welcome | `username`, `email`, `activation_link`, `registration_date` |
+| confirmation | `username`, `confirmation_link`, `expires_at` |
+| password_reset | `username`, `reset_link`, `expires_at` |
+
+**Пример шаблона:**
+
+```html
+<!-- app/templates/emails/welcome/template.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Welcome to CodeLab, {{ username }}!</h1>
+<p>Thank you for registering. Your account is ready to use.</p>
+<p>Registered: {{ registration_date|strftime('%Y-%m-%d %H:%M:%S') }}</p>
+{% endblock %}
+```
+
+### 11.5 Retry Логика
+
+**Exponential Backoff:**
+
+```
+Попытка 1: 0 сек (сразу)
+Попытка 2: 2 сек (base_delay * 2^1)
+Попытка 3: 4 сек (base_delay * 2^2)
+```
+
+**Формула:** `delay = base_delay * (2 ^ attempt) ± 10% (jitter)`
+
+**Retryable ошибки:**
+- `asyncio.TimeoutError` — timeout соединения
+- `ConnectionError` — ошибка соединения
+- `SMTPServerError` 4xx — временные ошибки SMTP сервера
+
+**Non-retryable ошибки:**
+- `SMTPAuthenticationError` — неправильные credentials
+- `SMTPServerError` 5xx — постоянная ошибка сервера
+
+**Пример логирования:**
+
+```json
+{
+  "timestamp": "2026-03-25T06:00:00.000Z",
+  "level": "INFO",
+  "event_type": "email_sent",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "template_name": "welcome",
+  "recipient": "jo***@example.com",
+  "attempt": 1,
+  "success": true
+}
+```
+
+### 11.6 Email Confirmation Tokens
+
+**Таблица: email_confirmation_tokens**
+
+```sql
+CREATE TABLE email_confirmation_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) UNIQUE NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT token_expires_future CHECK (expires_at > created_at)
+);
+
+CREATE INDEX idx_email_confirmation_tokens_token ON email_confirmation_tokens(token);
+CREATE INDEX idx_email_confirmation_tokens_expires_at ON email_confirmation_tokens(expires_at);
+```
+
+**Поля:**
+- `id`: UUID записи
+- `user_id`: ссылка на пользователя (unique — один активный токен на пользователя)
+- `token`: хэш токена для поиска (не хранится в открытом виде)
+- `expires_at`: время истечения токена (обычно 24 часа)
+- `created_at`: дата создания
+
+**Время жизни:** 24 часа (можно настроить через конфиг)
+
+**Одноразовое использование:** Токен удаляется после успешного подтверждения
+
+### 11.7 Security Considerations
+
+**Что НЕ логировать:**
+- ❌ Полные email адреса (маскировать: `jo***@example.com`)
+- ❌ SMTP credentials (username, password)
+- ❌ Confirmation tokens
+- ❌ Reset tokens
+
+**TLS/Encryption:**
+- ✅ SMTP должен использовать STARTTLS или SSL
+- ✅ Email адреса шифруются в transit
+- ✅ Credentials хранятся в переменных окружения (не в коде)
+
+**Rate Limiting:**
+- Не более 3 попыток отправления на пользователя в минуту
+- Не более 5 запросов подтверждения email в час на IP
+
+**Validation:**
+- Валидация email формата перед отправкой
+- Проверка наличия пользователя перед отправкой confirmation email
+- Проверка истечения токена перед подтверждением
+
+### 11.8 Error Handling
+
+**Graceful Degradation:**
+
+```python
+try:
+    await send_welcome_email(user)
+except EmailSendError as e:
+    logger.warning(f"Failed to send welcome email: {e}")
+    # Регистрация продолжается, несмотря на ошибку email
+    pass
+```
+
+**Логирование ошибок:**
+
+```json
+{
+  "timestamp": "2026-03-25T06:00:00.000Z",
+  "level": "ERROR",
+  "event_type": "email_failed",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "template_name": "confirmation",
+  "error": "SMTPServerError",
+  "retry_count": 3,
+  "final_attempt": true
+}
+```
+
+---
+
+## 12. Производительность и масштабирование
 
 ### 11.1 Требования к производительности
 

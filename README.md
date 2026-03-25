@@ -155,6 +155,72 @@ curl http://localhost:8003/health
 }
 ```
 
+## Email Notifications
+
+Auth Service включает интеграцию SMTP для отправки email уведомлений при важных событиях в системе:
+
+- **Welcome emails** — отправляются при успешной регистрации пользователя
+- **Email confirmation** — письмо с ссылкой подтверждения для верификации email адреса
+- **Password reset** — письмо с защищенной ссылкой для сброса пароля
+
+### API Endpoints для Email
+
+**POST /api/v1/register** — Регистрация пользователя с отправкой welcome и confirmation email
+
+**GET /api/v1/confirm-email** — Подтверждение email адреса по токену
+
+```bash
+# Пример подтверждения email
+curl "http://localhost:8003/api/v1/confirm-email?token=<confirmation_token>"
+```
+
+### Конфигурация SMTP
+
+Настройте SMTP через переменные окружения:
+
+```bash
+# SMTP сервер
+AUTH_SERVICE__SMTP_HOST=smtp.gmail.com
+AUTH_SERVICE__SMTP_PORT=587
+AUTH_SERVICE__SMTP_USERNAME=your-email@gmail.com
+AUTH_SERVICE__SMTP_PASSWORD=your-app-password
+AUTH_SERVICE__SMTP_FROM_EMAIL=noreply@codelab.com
+
+# SMTP опции
+AUTH_SERVICE__SMTP_USE_TLS=true          # Использовать STARTTLS
+AUTH_SERVICE__SMTP_TIMEOUT=30            # Timeout в секундах
+AUTH_SERVICE__SMTP_MAX_RETRIES=3         # Максимум попыток отправки
+
+# Управление отправкой
+AUTH_SERVICE__SEND_WELCOME_EMAIL=true           # Отправлять приветственные письма
+AUTH_SERVICE__REQUIRE_EMAIL_CONFIRMATION=true   # Требовать подтверждение email
+AUTH_SERVICE__SEND_PASSWORD_RESET_EMAIL=true    # Отправлять письма сброса пароля
+```
+
+### Локальная разработка с MailHog
+
+Для локальной разработки используйте MailHog — fake SMTP сервер:
+
+```bash
+# Запустить MailHog (используется в docker-compose.yml)
+docker-compose up mailhog
+
+# Web UI для просмотра писем: http://localhost:1025
+# SMTP сервер: localhost:1025
+```
+
+Обновите `.env` для разработки:
+
+```bash
+AUTH_SERVICE__SMTP_HOST=mailhog
+AUTH_SERVICE__SMTP_PORT=1025
+AUTH_SERVICE__SMTP_USERNAME=          # MailHog не требует аутентификации
+AUTH_SERVICE__SMTP_PASSWORD=
+AUTH_SERVICE__SMTP_USE_TLS=false
+```
+
+Для получения более полной информации по настройке SMTP для различных провайдеров (SendGrid, AWS SES, Mailgun) см. [Email Setup Guide](docs/EMAIL_SETUP.md).
+
 ## Документация
 
 ### Основные документы

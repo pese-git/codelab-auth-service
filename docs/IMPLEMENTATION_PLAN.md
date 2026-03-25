@@ -676,6 +676,162 @@
 
 ---
 
+## Итерация 13: SMTP Email Integration ✅ ЗАВЕРШЕНО
+
+### Обзор
+
+Интеграция SMTP для отправки email уведомлений при регистрации пользователей и других важных событиях. Функциональность включает:
+
+- Отправку welcome письма при регистрации
+- Подтверждение email адреса
+- Сброс пароля
+- Retry логика с exponential backoff
+- Асинхронная обработка в background
+
+### Задачи
+
+#### 13.1 Конфигурация SMTP
+
+- [x] Добавить SMTP параметры в `app/core/config.py`:
+  - [x] `smtp_host` (обязательный)
+  - [x] `smtp_port` (обязательный)
+  - [x] `smtp_username` (опциональный)
+  - [x] `smtp_password` (опциональный)
+  - [x] `smtp_from_email` (обязательный, по умолчанию "noreply@codelab.com")
+  - [x] `smtp_use_tls` (по умолчанию True)
+  - [x] `smtp_timeout` (по умолчанию 30 сек)
+  - [x] `smtp_max_retries` (по умолчанию 3)
+  - [x] `send_welcome_email`, `require_email_confirmation`, `send_password_reset_email` (управление функциями)
+- [x] Обновить `.env.example` с примерами SMTP конфигурации
+
+**Файлы:**
+- [`app/core/config.py`](../app/core/config.py)
+- [`.env.example`](.env.example)
+
+#### 13.2 Email Template Engine
+
+- [x] Реализовать `EmailMessage` в [`app/services/email_templates.py`](../app/services/email_templates.py):
+  - [x] Поля: `subject`, `html_body`, `text_body`, `to`, `from_`, `template_name`
+  - [x] Метод `as_string()` для SMTP отправки
+- [x] Реализовать `EmailTemplateEngine` с Jinja2:
+  - [x] Загрузка шаблонов из директории
+  - [x] Рендеринг с автоэскапом
+  - [x] Обработка ошибок (missing templates)
+- [x] Создать структуру email шаблонов:
+  - [x] `app/templates/emails/base.html` (базовый layout с CSS)
+  - [x] `app/templates/emails/welcome/template.html` и `subject.txt`
+  - [x] `app/templates/emails/confirmation/template.html` и `subject.txt`
+  - [x] `app/templates/emails/password_reset/template.html` и `subject.txt`
+
+**Файлы:**
+- [`app/services/email_templates.py`](../app/services/email_templates.py)
+- [`app/templates/emails/base.html`](../app/templates/emails/base.html)
+- `app/templates/emails/*/` — директории шаблонов
+
+#### 13.3 SMTP Email Sender
+
+- [x] Создать `SMTPEmailSender` в [`app/services/email_sender.py`](../app/services/email_sender.py):
+  - [x] Асинхронная отправка через `aiosmtplib`
+  - [x] Поддержка TLS/STARTTLS
+  - [x] Базовая аутентификация (username/password)
+  - [x] Обработка ошибок:
+    - [x] `SMTPAuthenticationError` → CRITICAL, не retry
+    - [x] `SMTPServerError` 5xx → ERROR, не retry
+    - [x] `SMTPServerError` 4xx → ERROR, retry
+    - [x] Timeout/ConnectionError → retry
+  - [x] Логирование без раскрытия credentials
+  - [x] Маскирование email адресов в логах
+
+**Файлы:**
+- [`app/services/email_sender.py`](../app/services/email_sender.py)
+
+#### 13.4 Email Retry Service
+
+- [x] Реализовать `EmailRetryService` в [`app/services/email_retry.py`](../app/services/email_retry.py):
+  - [x] Exponential backoff: `delay = base_delay * (2 ^ attempt)`
+  - [x] Jitter (±10%) для избежания thundering herd
+  - [x] Определение retryable ошибок
+  - [x] Логирование каждой попытки
+  - [x] Максимум попыток (по умолчанию 3)
+
+**Файлы:**
+- [`app/services/email_retry.py`](../app/services/email_retry.py)
+
+#### 13.5 Email Notification Service
+
+- [x] Реализовать `EmailNotificationService` в [`app/services/email_notifications.py`](../app/services/email_notifications.py):
+  - [x] Инъекция зависимостей (TemplateEngine, Sender, Retry)
+  - [x] `send_welcome_email(user, background=True)` → с проверкой конфига
+  - [x] `send_confirmation_email(user, token, background=True)` → с генерацией ссылки
+  - [x] `send_password_reset_email(user, reset_token)` → с временем жизни токена
+  - [x] Graceful degradation (ошибки email не прерывают основной процесс)
+  - [x] Полное логирование (успех и ошибки)
+
+**Файлы:**
+- [`app/services/email_notifications.py`](../app/services/email_notifications.py)
+
+#### 13.6 Email Service Расширение
+
+- [x] Обновить [`app/services/email_service.py`](../app/services/email_service.py):
+  - [x] `send_confirmation_email(user)` → использует EmailNotificationService
+  - [x] `generate_confirmation_token(user_id)` → с экспирацией
+  - [x] `verify_confirmation_token(token)` → валидация и одноразовое использование
+- [x] Добавить модель `EmailConfirmationToken` в БД (миграция уже создана)
+- [x] Добавить методы логирования в [`app/services/audit_service.py`](../app/services/audit_service.py):
+  - [x] `log_email_sent(user_id, template_name, recipient)`
+  - [x] `log_email_failed(user_id, template_name, error, retry_count)`
+  - [x] `log_email_confirmation_token_generated(user_id, token_hash)`
+  - [x] `log_email_confirmation_success(user_id)`
+
+**Файлы:**
+- [`app/services/email_service.py`](../app/services/email_service.py)
+- [`app/models/email_confirmation_token.py`](../app/models/email_confirmation_token.py)
+- [`app/services/audit_service.py`](../app/services/audit_service.py)
+
+#### 13.7 API Интеграция
+
+- [x] Обновить `POST /api/v1/register`:
+  - [x] После регистрации: отправка welcome email (background task)
+  - [x] Если `require_email_confirmation=True`: отправка confirmation email
+  - [x] Ошибки email не влияют на статус регистрации (201 Created)
+  - [x] Логирование всех попыток отправки
+- [x] Создать `GET /api/v1/confirm-email`:
+  - [x] Параметр: `token` (query)
+  - [x] Валидация и использование `email_service.verify_confirmation_token(token)`
+  - [x] Ответ 200 OK или 400 Bad Request
+  - [x] Логирование попыток подтверждения
+
+**Файлы:**
+- [`app/api/v1/register.py`](../app/api/v1/register.py)
+
+#### 13.8 Интеграция с Password Reset
+
+- [x] Интегрировать email отправку в [`app/api/v1/password_reset.py`](../app/api/v1/password_reset.py):
+  - [x] Отправка email с reset ссылкой при запросе сброса пароля
+  - [x] Используется `send_password_reset_email(user, reset_token)`
+  - [x] Background задача для асинхронной обработки
+
+**Файлы:**
+- [`app/api/v1/password_reset.py`](../app/api/v1/password_reset.py)
+
+### Критерии приемки
+
+- ✅ SMTP параметры корректно читаются из конфигурации
+- ✅ Email шаблоны загружаются и рендерятся без ошибок
+- ✅ Email отправляется успешно через SMTP сервер
+- ✅ Retry логика работает с exponential backoff и jitter
+- ✅ Email отправляется в background без блокирования API
+- ✅ Graceful degradation при ошибке SMTP
+- ✅ Confirmation token генерируется и валидируется
+- ✅ Все события логируются в audit table
+- ✅ Credentials не логируются в logs
+- ✅ Email адреса маскируются в логах
+- ✅ Конфигурационные флаги работают
+
+### Время: 3-4 дня
+
+---
+
 ## Общая оценка времени
 
 | Итерация | Описание | Время | Статус |
@@ -693,10 +849,11 @@
 | 10 | Тестирование и оптимизация | 3-4 дня | ✅ Завершено |
 | 11 | Мониторинг и observability | 2-3 дня | ✅ Завершено |
 | 12 | Финализация и деплой | 2-3 дня | ✅ Завершено |
-| **ИТОГО** | | **25-38 дней** | **✅ РЕАЛИЗОВАНО** |
+| 13 | SMTP Email Integration | 3-4 дня | ✅ Завершено |
+| **ИТОГО** | | **28-42 дней** | **✅ РЕАЛИЗОВАНО** |
 
-**Фактическое время реализации:** ~35 рабочих дней (7 недель)
-**Статус:** ✅ Production Ready (Январь 2026)
+**Фактическое время реализации:** ~38 рабочих дней (~8 недель)
+**Статус:** ✅ Production Ready (Март 2026)
 
 ---
 
