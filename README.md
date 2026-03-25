@@ -155,6 +155,89 @@ curl http://localhost:8003/health
 }
 ```
 
+## Password Reset API
+
+Auth Service предоставляет защищенные endpoints для сброса пароля пользователя:
+
+### Endpoints
+
+**POST /api/v1/auth/password-reset/request** — Запрос на сброс пароля
+
+```bash
+curl -X POST http://localhost:8003/api/v1/auth/password-reset/request \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com"}'
+```
+
+**Ответ (200 OK):**
+```json
+{
+  "message": "If an account with that email exists, you will receive password reset instructions."
+}
+```
+
+**POST /api/v1/auth/password-reset/confirm** — Подтверждение сброса пароля
+
+```bash
+curl -X POST http://localhost:8003/api/v1/auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "password": "NewPassword123!",
+    "password_confirm": "NewPassword123!"
+  }'
+```
+
+**Ответ (200 OK):**
+```json
+{
+  "message": "Password changed successfully"
+}
+```
+
+### Error Codes
+
+- **400 Bad Request** — Невалидный email, пароль не соответствует требованиям, токен истек
+  ```json
+  {
+    "detail": "Password does not meet requirements: minimum 8 characters, at least one uppercase, one digit and one special character"
+  }
+  ```
+
+- **429 Too Many Requests** — Превышен лимит запросов
+  ```json
+  {
+    "detail": "Too many password reset requests. Please try again later."
+  }
+  ```
+
+### Flow: Запрос → Email → Подтверждение
+
+1. **Запрос сброса пароля:**
+   - Пользователь отправляет POST на `/api/v1/auth/password-reset/request` с email
+   - Система генерирует одноразовый токен (действует 30 минут)
+   - Отправляется письмо с ссылкой для подтверждения (асинхронно)
+   - Всегда возвращается 200 OK (безопасность: не раскрываем наличие пользователя)
+
+2. **Лимиты (Rate Limiting):**
+   - **Запрос:** максимум 3 запроса за час на email-адрес
+   - **Подтверждение:** максимум 10 попыток за 5 минут на IP-адрес
+   - При превышении лимита: 429 Too Many Requests
+
+3. **Подтверждение сброса пароля:**
+   - Пользователь открывает ссылку из письма (содержит токен)
+   - Отправляет новый пароль на `/api/v1/auth/password-reset/confirm`
+   - Пароль должен соответствовать требованиям (8+ символов, заглавная, цифра, спецсимвол)
+   - Токен помечается как использованный (одноразовый)
+   - При успехе пользователь может войти с новым паролем
+
+### Требования к паролю
+
+- Минимум 8 символов
+- Хотя бы одна заглавная буква (A-Z)
+- Хотя бы одна цифра (0-9)
+- Хотя бы один специальный символ (!@#$%^&*)
+
 ## Email Notifications
 
 Auth Service включает интеграцию SMTP для отправки email уведомлений при важных событиях в системе:
@@ -163,15 +246,50 @@ Auth Service включает интеграцию SMTP для отправки 
 - **Email confirmation** — письмо с ссылкой подтверждения для верификации email адреса
 - **Password reset** — письмо с защищенной ссылкой для сброса пароля
 
-### API Endpoints для Email
+### API Endpoints для Email и Регистрации
 
 **POST /api/v1/register** — Регистрация пользователя с отправкой welcome и confirmation email
+
+```bash
+curl -X POST http://localhost:8003/api/v1/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "newuser@example.com",
+    "username": "newuser",
+    "password": "SecurePassword123"
+  }'
+```
+
+**Ответ (201 Created):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "newuser@example.com",
+  "username": "newuser",
+  "created_at": "2026-03-25T13:50:00.000Z"
+}
+```
+
+**Требования для пароля при регистрации:**
+- Минимум 8 символов
+- Максимум 128 символов
+
+**Ошибки:**
+- **409 Conflict** — Email или username уже зарегистрированы
+- **422 Unprocessable Entity** — Невалидные данные (неправильный формат email, короткий пароль и т.д.)
 
 **GET /api/v1/confirm-email** — Подтверждение email адреса по токену
 
 ```bash
 # Пример подтверждения email
 curl "http://localhost:8003/api/v1/confirm-email?token=<confirmation_token>"
+```
+
+**Ответ (200 OK):**
+```json
+{
+  "message": "Email confirmed successfully"
+}
 ```
 
 ### Конфигурация SMTP
@@ -229,9 +347,11 @@ AUTH_SERVICE__SMTP_USE_TLS=false
 - [**План реализации**](docs/IMPLEMENTATION_PLAN.md) — пошаговый план разработки
 - [**Интеграционные точки**](docs/INTEGRATION_POINTS.md) — интеграция с другими сервисами
 
-### Дополнительные документы (будут созданы)
+### Дополнительные документы
 
-- API документация — OpenAPI/Swagger
+- [**API Documentation (Swagger/OpenAPI)**](#api-endpoints) — интерактивная API документация
+- [**Руководство по email**](docs/EMAIL_SETUP.md) — настройка различных SMTP провайдеров
+- [**QA отчеты**](docs/QA_REPORT_SMTP.md) — результаты тестирования
 - Руководство по развертыванию
 - Руководство по интеграции для клиентов
 - Troubleshooting guide

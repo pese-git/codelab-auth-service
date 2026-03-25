@@ -933,6 +933,330 @@ except EmailSendError as e:
 
 ---
 
+## 12. Password Reset Функциональность
+
+### 12.1 Обзор
+
+Password Reset — функциональность для безопасного изменения пароля пользователя через email подтверждение. Использует одноразовые токены с ограниченным временем жизни и защиту от брут-форса.
+
+**Основные компоненты:**
+- Генерация криптографически стойких токенов (`secrets.token_urlsafe`)
+- SHA-256 хеширование токенов при сохранении в БД
+- Асинхронная отправка email с ссылкой сброса
+- Rate limiting на запросы и подтверждения
+- Одноразовое использование токена
+
+### 12.2 API Endpoints
+
+#### POST /api/v1/auth/password-reset/request
+
+**Назначение:** Запрос на сброс пароля (отправка инструкций на email)
+
+**Запрос:**
+```http
+POST /api/v1/auth/password-reset/request HTTP/1.1
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+**Параметры:**
+- `email` (required): Email адрес пользователя
+
+**Ответ (200 OK):**
+```json
+{
+  "message": "If an account with that email exists, you will receive password reset instructions."
+}
+```
+
+**Ответ всегда 200 OK** (безопасность: не раскрываем наличие пользователя)
+
+**Ошибки:**
+```json
+// 400 Bad Request - невалидный email
+{
+  "detail": "Invalid email format"
+}
+
+// 429 Too Many Requests - превышен лимит (3 запроса/час на email)
+{
+  "detail": "Too many password reset requests. Please try again later."
+}
+```
+
+**Rate Limiting:**
+- 3 запроса за 1 час на email адрес
+- 5 запросов за 1 час на IP адрес (защита от распределенных атак)
+
+#### POST /api/v1/auth/password-reset/confirm
+
+**Назначение:** Подтверждение сброса пароля с использованием токена
+
+**Запрос:**
+```http
+POST /api/v1/auth/password-reset/confirm HTTP/1.1
+Content-Type: application/json
+
+{
+  "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "password": "NewPassword123!",
+  "password_confirm": "NewPassword123!"
+}
+```
+
+**Параметры:**
+- `token` (required): Токен из email ссылки
+- `password` (required): Новый пароль
+- `password_confirm` (required): Подтверждение пароля
+
+**Ответ (200 OK):**
+```json
+{
+  "message": "Password changed successfully"
+}
+```
+
+**Ошибки:**
+```json
+// 400 Bad Request - невалидный/истекший токен
+{
+  "detail": "Invalid or expired password reset token"
+}
+
+// 400 Bad Request - пароли не совпадают
+{
+  "detail": "Passwords do not match"
+}
+
+// 400 Bad Request - пароль не соответствует требованиям
+{
+  "detail": "Password does not meet requirements: minimum 8 characters, at least one uppercase, one digit and one special character"
+}
+
+// 429 Too Many Requests - превышен лимит попыток (10 за 5 минут на IP)
+{
+  "detail": "Too many password reset attempts. Please try again later."
+}
+```
+
+**Rate Limiting:**
+- 10 попыток за 5 минут на IP адрес
+- При превышении: IP блокируется на 15 минут
+
+### 12.3 Token Generation
+
+**Генерация токенов:**
+
+```python
+# Генерация
+token = secrets.token_urlsafe(32)  # ~43 символа, URL-safe
+
+# Хеширование для сохранения в БД
+import hashlib
+token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+# Сохранение в БД: token_hash
+# Отправка пользователю: token (в открытом виде через email)
+```
+
+**Параметры токена:**
+- Длина: 32 байта (~43 символа в base64url)
+- Алгоритм: SHA-256 для хеширования
+- Время жизни: 30 минут
+- Одноразовое использование: да
+
+**Безопасность:**
+- Криптографически стойкий генератор (`secrets` модуль)
+- Constant-time сравнение при верификации
+- В БД хранится только хэш, полный токен не сохраняется
+
+### 12.4 Таблица: password_reset_tokens
+
+```sql
+CREATE TABLE password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP NULL,
+    
+    CONSTRAINT token_expires_future CHECK (expires_at > created_at),
+    CONSTRAINT used_after_created CHECK (used_at IS NULL OR used_at >= created_at)
+);
+
+CREATE INDEX idx_password_reset_tokens_token_hash ON password_reset_tokens(token_hash);
+CREATE INDEX idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+CREATE INDEX idx_password_reset_tokens_expires_at ON password_reset_tokens(expires_at);
+```
+
+**Поля:**
+- `id`: UUID записи
+- `user_id`: ссылка на пользователя (UNIQUE — один активный токен на пользователя)
+- `token_hash`: SHA-256 хэш токена для поиска (не хранится полный токен)
+- `created_at`: время создания
+- `expires_at`: время истечения (обычно created_at + 30 минут)
+- `used_at`: время использования (NULL если не использован)
+
+### 12.5 Flow Сброса Пароля
+
+```
+1. Пользователь запрашивает сброс пароля
+   POST /api/v1/auth/password-reset/request
+   {
+     "email": "user@example.com"
+   }
+   ↓
+2. Система проверяет лимиты (rate limiting)
+   - 3 запроса/час на email
+   - 5 запросов/час на IP
+   ↓
+3. Система ищет пользователя по email
+   - Если не найден: всё равно возвращает 200 OK
+   ↓
+4. Генерируется токен и сохраняется в БД
+   - token = secrets.token_urlsafe(32)
+   - token_hash = SHA256(token)
+   - Время жизни: 30 минут
+   - Одноразовое использование
+   ↓
+5. Отправляется email с ссылкой
+   - Ссылка: /reset-password?token={token}
+   - Асинхронная отправка (background task)
+   - Отправка может повторяться с retry logic
+   ↓
+6. Пользователь переходит по ссылке и вводит новый пароль
+   POST /api/v1/auth/password-reset/confirm
+   {
+     "token": "...",
+     "password": "NewPassword123!",
+     "password_confirm": "NewPassword123!"
+   }
+   ↓
+7. Система проверяет лимиты (10 попыток/5 минут на IP)
+   ↓
+8. Система верифицирует токен
+   - Существует ли в БД
+   - Не истек ли (expires_at > NOW)
+   - Не использован ли (used_at IS NULL)
+   ↓
+9. Система валидирует пароль
+   - Минимум 8 символов
+   - Заглавная буква
+   - Цифра
+   - Специальный символ
+   ↓
+10. Пароли совпадают?
+    ↓
+11. Обновление пароля пользователя
+    - Хеширование bcrypt (cost 12)
+    - Обновление password_hash
+    - Обновление updated_at
+    ↓
+12. Токен помечается как использованный
+    - used_at = NOW()
+    ↓
+13. Логирование события (audit trail)
+    ↓
+14. Возврат 200 OK
+```
+
+### 12.6 Security Features
+
+**Защита от основных атак:**
+
+1. **Brute-force атаки на подтверждение:**
+   - Лимит: 10 попыток за 5 минут на IP
+   - Блокировка на 15 минут при превышении
+   - Логирование всех попыток
+
+2. **Spam-атаки на запросы сброса:**
+   - Лимит: 3 запроса/час на email
+   - Лимит: 5 запросов/час на IP
+   - Возврат одинакового ответа независимо от наличия пользователя
+
+3. **Реиспользование токена:**
+   - Токен помечается как использованный (used_at)
+   - При повторной попытке: "Invalid or expired token"
+   - Логирование попытки реиспользования
+
+4. **Кража токена:**
+   - Транспорт: HTTPS only
+   - Email рассылка через SMTP с TLS
+   - В логах токены не сохраняются
+
+5. **Timing attacks:**
+   - Constant-time сравнение хешей
+   - Использование `hmac.compare_digest()`
+
+### 12.7 Логирование
+
+**События для логирования:**
+
+```json
+// Успешный запрос сброса пароля
+{
+  "timestamp": "2026-03-25T10:30:00.000Z",
+  "level": "INFO",
+  "event_type": "password_reset_requested",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "us***@example.com",
+  "ip_address": "192.168.1.100",
+  "success": true
+}
+
+// Успешное подтверждение сброса пароля
+{
+  "timestamp": "2026-03-25T10:35:00.000Z",
+  "level": "INFO",
+  "event_type": "password_reset_confirmed",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "ip_address": "192.168.1.100",
+  "success": true
+}
+
+// Превышение лимита (rate limit)
+{
+  "timestamp": "2026-03-25T10:40:00.000Z",
+  "level": "WARNING",
+  "event_type": "password_reset_rate_limit_exceeded",
+  "email": "us***@example.com",
+  "ip_address": "192.168.1.100",
+  "limit_type": "per_email",
+  "limit": "3/hour"
+}
+
+// Невалидный токен при подтверждении
+{
+  "timestamp": "2026-03-25T10:45:00.000Z",
+  "level": "WARNING",
+  "event_type": "password_reset_invalid_token",
+  "ip_address": "192.168.1.100",
+  "reason": "expired"
+}
+
+// Brute-force обнаружение
+{
+  "timestamp": "2026-03-25T10:50:00.000Z",
+  "level": "CRITICAL",
+  "event_type": "password_reset_brute_force_detected",
+  "ip_address": "192.168.1.100",
+  "failed_attempts": 10,
+  "blocked_until": "2026-03-25T11:05:00.000Z"
+}
+```
+
+**Что НЕ логировать:**
+- ❌ Полные токены
+- ❌ Новые пароли
+- ❌ Старые пароли
+- ❌ Полные email адреса (маскировать: us***@example.com)
+
+---
+
 ## 12. Производительность и масштабирование
 
 ### 11.1 Требования к производительности

@@ -258,7 +258,153 @@ Host: auth.codelab.local
 
 ---
 
-### 3. GET /health
+### 3. POST /api/v1/auth/password-reset/request
+
+**Назначение:** Инициирование процесса сброса пароля по email адресу
+
+**Content-Type:** `application/json`
+
+**Request:**
+
+```http
+POST /api/v1/auth/password-reset/request HTTP/1.1
+Host: auth.codelab.local
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+**Parameters:**
+
+| Параметр | Тип | Обязательно | Описание |
+|----------|-----|-----------|---------|
+| `email` | string | ✅ | Валидный email адрес пользователя |
+
+**Success Response (200 OK):**
+
+```json
+{
+  "status": "success",
+  "message": "Инструкции по восстановлению пароля отправлены"
+}
+```
+
+**Error Responses:**
+
+```json
+// 400 Bad Request — Невалидный email формат
+{
+  "status": "error",
+  "message": "Невалидный email адрес",
+  "code": "invalid_email"
+}
+
+// 429 Too Many Requests — Rate limit
+{
+  "status": "error",
+  "message": "Слишком много запросов. Максимум 3 запроса в час",
+  "code": "rate_limit_exceeded",
+  "retry_after": 3600
+}
+```
+
+**Notes:**
+- Возвращает 200 для существующих и несуществующих email (security)
+- Генерирует токен и отправляет письмо если пользователь существует
+- Rate limit: максимум 3 запроса на сброс в час на пользователя/IP
+- Асинхронная отправка письма (не блокирует ответ)
+
+---
+
+### 4. POST /api/v1/auth/password-reset/confirm
+
+**Назначение:** Подтверждение сброса пароля и установка нового пароля
+
+**Content-Type:** `application/json`
+
+**Request:**
+
+```http
+POST /api/v1/auth/password-reset/confirm HTTP/1.1
+Host: auth.codelab.local
+Content-Type: application/json
+
+{
+  "token": "abc123_def456_ghi789...",
+  "password": "NewP@ssw0rd123",
+  "password_confirm": "NewP@ssw0rd123"
+}
+```
+
+**Parameters:**
+
+| Параметр | Тип | Обязательно | Описание |
+|----------|-----|-----------|---------|
+| `token` | string | ✅ | Токен сброса из письма |
+| `password` | string | ✅ | Новый пароль (8-64 символа) |
+| `password_confirm` | string | ✅ | Подтверждение пароля |
+
+**Success Response (200 OK):**
+
+```json
+{
+  "status": "success",
+  "message": "Пароль успешно изменён"
+}
+```
+
+**Error Responses:**
+
+```json
+// 400 Bad Request — Невалидный токен
+{
+  "status": "error",
+  "message": "Ссылка для восстановления недействительна",
+  "code": "invalid_token"
+}
+
+// 400 Bad Request — Истёкший токен
+{
+  "status": "error",
+  "message": "Ссылка для восстановления истекла, запросите новую",
+  "code": "token_expired"
+}
+
+// 400 Bad Request — Уже использованный токен
+{
+  "status": "error",
+  "message": "Ссылка уже была использована",
+  "code": "token_already_used"
+}
+
+// 400 Bad Request — Слабый пароль
+{
+  "status": "error",
+  "message": "Пароль не соответствует требованиям",
+  "code": "weak_password",
+  "details": "Пароль должен содержать заглавные, строчные буквы, цифры и специальные символы"
+}
+
+// 429 Too Many Requests — Brute-force protection
+{
+  "status": "error",
+  "message": "Слишком много попыток. Пожалуйста, попробуйте позже",
+  "code": "rate_limit_exceeded",
+  "retry_after": 900
+}
+```
+
+**Notes:**
+- Токен действует 30 минут
+- Требования к паролю: 8-64 символа, заглавные, строчные, цифры, спец. символы
+- Brute-force protection: максимум 10 неудачных попыток с разными токенами на IP в 5 минут → блокировка на 15 минут
+- После смены пароля логируется событие в audit_logs
+
+---
+
+### 5. GET /health
 
 **Назначение:** Health check для балансировщика нагрузки и мониторинга
 
@@ -296,6 +442,36 @@ Host: auth.codelab.local
   }
 }
 ```
+
+---
+
+### Password Reset Data Structures
+
+#### Request: Password Reset Request
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Constraints:**
+- email: непустой, валидный email адрес (RFC 5322)
+
+#### Request: Password Reset Confirm
+
+```json
+{
+  "token": "abc123_def456_ghi789...",
+  "password": "NewP@ssw0rd123",
+  "password_confirm": "NewP@ssw0rd123"
+}
+```
+
+**Constraints:**
+- token: непустая строка, формат token_urlsafe
+- password: 8-64 символа, содержит заглавные, строчные буквы, цифры и специальные символы
+- password_confirm: должен совпадать с password
 
 ---
 
@@ -479,7 +655,79 @@ sequenceDiagram
 
 ## 📋 Request/Response Examples
 
-### Example 1: Successful Login (Password Grant)
+### Example 1: Password Reset Request
+
+**cURL:**
+```bash
+curl -X POST https://auth.codelab.local/api/v1/auth/password-reset/request \
+  -H "Content-Type: application/json" \
+  -d '{"email":"john@example.com"}'
+```
+
+**Python:**
+```python
+import requests
+
+response = requests.post(
+    "https://auth.codelab.local/api/v1/auth/password-reset/request",
+    json={"email": "john@example.com"}
+)
+
+result = response.json()
+# {"status": "success", "message": "Инструкции по восстановлению пароля отправлены"}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Инструкции по восстановлению пароля отправлены"
+}
+```
+
+---
+
+### Example 2: Password Reset Confirmation
+
+**cURL:**
+```bash
+curl -X POST https://auth.codelab.local/api/v1/auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token":"abc123_def456_ghi789...",
+    "password":"NewP@ssw0rd123",
+    "password_confirm":"NewP@ssw0rd123"
+  }'
+```
+
+**Python:**
+```python
+import requests
+
+response = requests.post(
+    "https://auth.codelab.local/api/v1/auth/password-reset/confirm",
+    json={
+        "token": "abc123_def456_ghi789...",
+        "password": "NewP@ssw0rd123",
+        "password_confirm": "NewP@ssw0rd123"
+    }
+)
+
+result = response.json()
+# {"status": "success", "message": "Пароль успешно изменён"}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Пароль успешно изменён"
+}
+```
+
+---
+
+### Example 3: Successful Login (Password Grant)
 
 **cURL:**
 ```bash
@@ -613,10 +861,12 @@ curl -X POST https://gateway.codelab.local/api/v1/chat \
 
 ### Limits
 
-| Limit | Value | Header |
-|-------|-------|--------|
-| **Per IP** | 5 requests/minute | `X-RateLimit-Limit: 5` |
-| **Per Username** | 10 requests/hour | `X-RateLimit-Limit: 10` |
+| Endpoint | Limit | Value | Header |
+|----------|-------|-------|--------|
+| **Password Reset Request** | Per IP/User | 3 requests/hour | `X-RateLimit-Limit: 3` |
+| **Password Reset Confirm** | Per IP | 10 requests/5 min | `X-RateLimit-Limit: 10` |
+| **OAuth2 Token** | Per IP | 5 requests/minute | `X-RateLimit-Limit: 5` |
+| **OAuth2 Token** | Per Username | 10 requests/hour | `X-RateLimit-Limit: 10` |
 
 ### Response Headers
 

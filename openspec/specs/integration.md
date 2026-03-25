@@ -429,6 +429,151 @@ async def call_llm(prompt: str):
 
 ---
 
+## 📧 Интеграция с Email Service (Password Reset Notifications)
+
+### Текущее состояние
+
+Auth Service включает функциональность сброса пароля, которая отправляет email уведомления через SMTP.
+
+### Требуемые зависимости
+
+#### 1. SMTP Integration (email-notifications capability)
+
+Password Reset Notifications зависит от существующей SMTP интеграции для отправки писем:
+
+```python
+# app/services/password_reset_notifications.py
+from app.services.email_notifications import EmailNotificationService
+
+class PasswordResetNotificationService:
+    def __init__(self, email_service: EmailNotificationService):
+        self.email_service = email_service
+    
+    async def send_password_reset_email(
+        self,
+        user_email: str,
+        user_name: str,
+        reset_token: str,
+        reset_url: str
+    ):
+        """Отправить письмо с ссылкой сброса пароля"""
+        
+        # Подготовить переменные шаблона
+        template_vars = {
+            "user_name": user_name,
+            "reset_url": reset_url,
+            "token_expiry_hours": 0.5,  # 30 минут
+            "support_email": "support@codelab.local",
+            "current_year": datetime.now().year,
+            "app_name": "CodeLab"
+        }
+        
+        # Использовать email service для отправки
+        await self.email_service.send_email(
+            to_email=user_email,
+            template_type="password_reset",
+            template_vars=template_vars,
+            retry_count=3
+        )
+```
+
+#### 2. Email Templates (email-templates capability)
+
+Требуется создание email шаблона для сброса пароля:
+
+```
+app/templates/emails/password_reset/
+├── subject.txt          # Тема письма
+├── template.html        # HTML версия
+└── template.txt         # Текстовая версия
+```
+
+**Шаблон subject.txt:**
+```
+Восстановление доступа к вашему аккаунту CodeLab
+```
+
+**Переменные шаблона:**
+- `user_name` — Имя пользователя
+- `reset_url` — Полный URL с токеном
+- `token_expiry_hours` — Часы до истечения (0.5 = 30 минут)
+- `support_email` — Email поддержки
+- `current_year` — Текущий год
+- `app_name` — Название приложения
+
+#### 3. Async Processing
+
+Отправка письма должна быть асинхронной и не блокировать API ответ:
+
+```python
+# app/api/v1/password_reset.py
+from fastapi import BackgroundTasks
+
+@router.post("/auth/password-reset/request")
+async def request_password_reset(
+    request: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession
+):
+    # Найти пользователя
+    user = await user_service.get_by_email(request.email)
+    
+    if user:
+        # Генерировать токен
+        token = secrets.token_urlsafe(32)
+        
+        # Сохранить в БД
+        await password_reset_service.create_token(user.id, token)
+        
+        # Отправить письмо в background (не блокирует ответ)
+        background_tasks.add_task(
+            notification_service.send_password_reset_email,
+            user_email=user.email,
+            user_name=user.username,
+            reset_token=token,
+            reset_url=f"https://app.codelab.local/auth/reset-password?token={token}"
+        )
+    
+    # Вернуть успех немедленно (не раскрывать существует ли пользователь)
+    return {
+        "status": "success",
+        "message": "Инструкции по восстановлению пароля отправлены"
+    }
+```
+
+#### 4. Retry Logic
+
+Email Service должна иметь retry logic с exponential backoff:
+
+```python
+# app/services/email_retry.py
+async def send_email_with_retry(
+    to_email: str,
+    template_type: str,
+    template_vars: dict,
+    max_retries: int = 3,
+    base_delay: int = 1
+):
+    """Отправить email с retry логикой"""
+    for attempt in range(max_retries):
+        try:
+            await smtp_client.send(
+                to_email=to_email,
+                subject=render_template(f"{template_type}_subject"),
+                html_body=render_template(f"{template_type}_html", template_vars),
+                text_body=render_template(f"{template_type}_txt", template_vars)
+            )
+            return True
+        except SMTPException as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)  # Exponential backoff
+                await asyncio.sleep(delay)
+            else:
+                raise
+```
+
+---
+
 ## 🐳 Docker Compose интеграция
 
 ### Добавить Auth Service

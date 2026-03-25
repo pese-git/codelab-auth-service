@@ -210,8 +210,8 @@
 - [x] Rate limiting работает и блокирует после лимита
 - [x] Email отправляется асинхронно и не блокирует endpoints
 - [x] Токены генерируются криптографически стойким способом
-- [ ] Все тесты проходят (unit + integration + E2E)
+- [x] Все тесты проходят (unit + integration + E2E)
 - [x] Нет sensitive данных в логах
-- [ ] Миграция успешна на staging/production
-- [ ] API документация обновлена
+- [x] Миграция успешна на staging/production
+- [x] API документация обновлена
 - [x] Performance приемлемо (no N+1 queries, indexing правильное)

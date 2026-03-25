@@ -352,19 +352,206 @@ curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/confirm \
 
 ---
 
+## Password Reset Endpoints
+
+### Endpoint: POST /api/v1/auth/password-reset/request
+
+Запрос на сброс пароля (отправка инструкций на email).
+
+#### Команда (валидный email):
+```bash
+curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/request \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@example.com"}' \
+  -w "\nStatus: %{http_code}\n" | jq .
+```
+
+#### Результат (валидный email):
+```json
+{
+  "message": "If an account with that email exists, you will receive password reset instructions."
+}
+```
+**Status: 200**
+
+#### Команда (несуществующий email - та же безопасная ответ):
+```bash
+curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/request \
+  -H "Content-Type: application/json" \
+  -d '{"email": "nonexistent@example.com"}' \
+  -w "\nStatus: %{http_code}\n" | jq .
+```
+
+#### Результат (несуществующий email):
+```json
+{
+  "message": "If an account with that email exists, you will receive password reset instructions."
+}
+```
+**Status: 200** (одинаковый ответ для обоих случаев - безопасность)
+
+#### Команда (невалидный email):
+```bash
+curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/request \
+  -H "Content-Type: application/json" \
+  -d '{"email": "invalid-email"}' \
+  -w "\nStatus: %{http_code}\n"
+```
+
+#### Результат (невалидный email):
+```json
+{
+  "detail": [
+    {
+      "type": "string_pattern",
+      "loc": ["body", "email"],
+      "msg": "String should match pattern",
+      "input": "invalid-email"
+    }
+  ]
+}
+```
+**Status: 422**
+
+#### Команда (превышение rate limit - 3+ запроса/час):
+```bash
+# Попытка 4-я за час
+curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/request \
+  -H "Content-Type: application/json" \
+  -d '{"email": "spam@example.com"}' \
+  -w "\nStatus: %{http_code}\n" | jq .
+```
+
+#### Результат (превышение rate limit):
+```json
+{
+  "detail": "Too many password reset requests. Please try again later."
+}
+```
+**Status: 429**
+
+---
+
+### Endpoint: POST /api/v1/auth/password-reset/confirm
+
+Подтверждение сброса пароля с использованием токена.
+
+#### Команда (валидный токен и пароль):
+```bash
+curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "XyZ_-1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d_-_aBc",
+    "password": "NewPassword123!",
+    "password_confirm": "NewPassword123!"
+  }' \
+  -w "\nStatus: %{http_code}\n" | jq .
+```
+
+#### Результат (успех):
+```json
+{
+  "message": "Password changed successfully"
+}
+```
+**Status: 200**
+
+#### Команда (невалидный токен):
+```bash
+curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "invalid_token_xyz",
+    "password": "NewPassword123!",
+    "password_confirm": "NewPassword123!"
+  }' \
+  -w "\nStatus: %{http_code}\n" | jq .
+```
+
+#### Результат (невалидный токен):
+```json
+{
+  "detail": "Invalid or expired password reset token"
+}
+```
+**Status: 400**
+
+#### Команда (несовпадающие пароли):
+```bash
+curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "valid_token_xyz",
+    "password": "NewPassword123!",
+    "password_confirm": "DifferentPassword123!"
+  }' \
+  -w "\nStatus: %{http_code}\n" | jq .
+```
+
+#### Результат (несовпадающие пароли):
+```json
+{
+  "detail": "Passwords do not match"
+}
+```
+**Status: 400**
+
+#### Команда (слабый пароль):
+```bash
+curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "valid_token_xyz",
+    "password": "weak",
+    "password_confirm": "weak"
+  }' \
+  -w "\nStatus: %{http_code}\n" | jq .
+```
+
+#### Результат (слабый пароль):
+```json
+{
+  "detail": "Password does not meet requirements: minimum 8 characters, at least one uppercase, one digit and one special character"
+}
+```
+**Status: 400**
+
+#### Команда (превышение лимита попыток - 10+ за 5 минут на IP):
+```bash
+# Попытка 11-я за 5 минут (или после долгого ожидания и 10+ попыток)
+curl -s -X POST http://localhost:8003/api/v1/auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "any_token",
+    "password": "NewPassword123!",
+    "password_confirm": "NewPassword123!"
+  }' \
+  -w "\nStatus: %{http_code}\n" | jq .
+```
+
+#### Результат (превышение лимита попыток):
+```json
+{
+  "detail": "Too many password reset attempts. Please try again later."
+}
+```
+**Status: 429**
+
+---
+
 ## Итоговая статистика тестирования
 
 | Категория | Результат |
 |-----------|-----------|
-| **Всего найдено endpoints** | 7 |
+| **Всего найдено endpoints** | 9 |
 | **GET endpoints** | 3 (/, /health, /.well-known/jwks.json) |
-| **POST endpoints** | 4 (/api/v1/register, /oauth/token, /api/v1/auth/password-reset/request, /api/v1/auth/password-reset/confirm) |
-| **Успешно протестировано** | 7/7 (100%) |
-| **HTTP 200 responses** | 3 |
+| **POST endpoints** | 6 (/api/v1/register, /oauth/token, /api/v1/auth/password-reset/request, /api/v1/auth/password-reset/confirm, /api/v1/confirm-email) |
+| **Успешно протестировано** | 9/9 (100%) |
+| **HTTP 200 responses** | 5 |
 | **HTTP 201 responses** | 1 |
-| **HTTP 400/401 responses** | 5 |
+| **HTTP 400/401 responses** | 7 |
 | **HTTP 409 responses** | 1 |
-| **HTTP 422 responses** | 2 |
+| **HTTP 422 responses** | 3 |
 | **HTTP 429 responses** | Rate limiting активен |
 
 ---

@@ -26,6 +26,7 @@
 erDiagram
     USERS ||--o{ REFRESH_TOKENS : creates
     USERS ||--o{ AUDIT_LOGS : generates
+    USERS ||--o{ PASSWORD_RESET_TOKENS : generates
     OAUTH_CLIENTS ||--o{ REFRESH_TOKENS : issues
     OAUTH_CLIENTS ||--o{ AUDIT_LOGS : uses
 
@@ -39,6 +40,15 @@ erDiagram
         timestamp created_at
         timestamp updated_at
         timestamp last_login_at
+    }
+
+    PASSWORD_RESET_TOKENS {
+        string id PK "UUID"
+        string user_id FK
+        string token_hash UK "SHA-256"
+        timestamp created_at
+        timestamp expires_at
+        timestamp used_at "nullable"
     }
 
     OAUTH_CLIENTS {
@@ -293,7 +303,81 @@ VALUES (
 
 ---
 
-### 4. Таблица: audit_logs
+### 4. Таблица: password_reset_tokens
+
+**Назначение:** Хранение криптографически защищённых одноразовых токенов для восстановления пароля
+
+```sql
+CREATE TABLE password_reset_tokens (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP NULL,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    
+    CONSTRAINT password_reset_tokens_expires_future 
+        CHECK (expires_at > created_at)
+);
+
+CREATE INDEX idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+CREATE INDEX idx_password_reset_tokens_token_hash ON password_reset_tokens(token_hash);
+CREATE INDEX idx_password_reset_tokens_expires_at ON password_reset_tokens(expires_at);
+```
+
+**Поля:**
+
+| Поле | Тип | Обязательно | Описание |
+|------|-----|-----------|---------|
+| `id` | UUID (VARCHAR 36) | ✅ | Уникальный идентификатор записи токена |
+| `user_id` | VARCHAR(36) | ✅ | Ссылка на пользователя (Foreign Key) |
+| `token_hash` | VARCHAR(64) | ✅ | SHA-256 хеш токена (для верификации, хранится в БД) |
+| `created_at` | TIMESTAMP | ✅ | Дата и время создания токена |
+| `expires_at` | TIMESTAMP | ✅ | Дата и время истечения (30 минут после создания) |
+| `used_at` | TIMESTAMP | ❌ | Дата и время использования (NULL если не использован) |
+
+**Индексы:**
+- `user_id` — для быстрого поиска токенов пользователя
+- `token_hash` — для верификации токена по хешу
+- `expires_at` — для очистки истёкших токенов
+
+**Логика использования:**
+```
+1. При запросе сброса пароля:
+   - Генерируется токен: secrets.token_urlsafe(32)
+   - Вычисляется хеш: SHA-256(token)
+   - В БД сохраняется: id, user_id, token_hash, created_at, expires_at
+   - Пользователю отправляется: полный token (не хеш!)
+
+2. При подтверждении сброса:
+   - Пользователь отправляет: token
+   - Вычисляется хеш: SHA-256(token)
+   - Поиск в БД: SELECT * FROM password_reset_tokens WHERE token_hash = ?
+   - Проверка: expires_at > NOW() AND used_at IS NULL
+   - При успехе: UPDATE password_reset_tokens SET used_at = NOW()
+
+3. Очистка истёкших:
+   - Периодически (cron) удалять записи где expires_at < NOW()
+```
+
+**Пример данных:**
+```sql
+INSERT INTO password_reset_tokens 
+(id, user_id, token_hash, created_at, expires_at)
+VALUES (
+    '450e8400-e29b-41d4-a716-446655440005',
+    '550e8400-e29b-41d4-a716-446655440000',
+    'a1b2c3d4e5f67890abcdef1234567890ab...',  -- SHA-256
+    CURRENT_TIMESTAMP,
+    DATETIME('now', '+30 minutes')
+);
+```
+
+---
+
+### 5. Таблица: audit_logs
 
 **Назначение:** Логирование всех операций аутентификации и авторизации
 
@@ -346,6 +430,9 @@ CREATE INDEX idx_audit_logs_success ON audit_logs(success);
 | `rate_limit_exceeded` | Rate limit | ❌ | `{"limit_type":"ip","limit":"5/min"}` |
 | `brute_force_blocked` | Блокировка перебора | ❌ | `{"username":"john","attempts":5}` |
 | `password_change` | Смена пароля | ✅ | `{"username":"john"}` |
+| `password_reset_requested` | Запрос сброса пароля | ✅ | `{"email":"john@example.com","token_expires_in_minutes":30}` |
+| `password_reset_confirmed` | Подтверждение сброса пароля | ✅ | `{"user_id":"..."}` |
+| `password_reset_failed` | Ошибка при сбросе пароля | ❌ | `{"reason":"token_expired","email":"john@example.com"}` |
 | `user_created` | Создание пользователя | ✅ | `{"username":"john","email":"john@..."}` |
 | `user_blocked` | Блокировка пользователя | ✅ | `{"username":"john","reason":"..."}` |
 

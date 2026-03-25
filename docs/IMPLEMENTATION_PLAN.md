@@ -832,6 +832,152 @@
 
 ---
 
+## Итерация 14: Password Reset Functionality ✅ ЗАВЕРШЕНО
+
+### Обзор
+
+Реализация функциональности безопасного сброса пароля пользователя через email подтверждение. Функциональность включает:
+
+- Генерацию криптографически стойких одноразовых токенов
+- Хеширование токенов SHA-256 перед сохранением в БД
+- Асинхронную отправку email с ссылкой сброса пароля
+- Rate limiting на запросы (3/час) и подтверждения (10/5мин)
+- Brute-force защиту IP-адреса (блокировка на 15 минут)
+- Одноразовое использование токена
+
+### Completed Endpoints
+
+#### POST /api/v1/auth/password-reset/request
+- Запрос на сброс пароля (отправка инструкций на email)
+- Rate limiting: 3 запроса/час на email, 5 запросов/час на IP
+- Всегда возвращает 200 OK (безопасность)
+- Асинхронная отправка email в background
+
+#### POST /api/v1/auth/password-reset/confirm
+- Подтверждение сброса пароля с использованием токена
+- Rate limiting: 10 попыток/5мин на IP (блокировка на 15мин)
+- Валидация пароля (8+ символов, заглавная, цифра, спецсимвол)
+- Одноразовое использование токена (marked as used)
+
+### Задачи
+
+#### 14.1 Database & Models ✅
+- [x] Создать Alembic миграцию для таблицы `password_reset_tokens`
+  - Колонки: id (UUID), user_id (FK), token_hash (VARCHAR unique), created_at, expires_at, used_at
+  - Индексы на: token_hash, user_id, expires_at
+- [x] Создать SQLAlchemy модель `PasswordResetToken`
+- [x] Обновить `app/models/__init__.py`
+
+#### 14.2 Core Services ✅
+- [x] Создать `app/services/password_reset_service.py`
+  - `create_token(user_id: UUID) -> str` — генерирует и сохраняет токен
+  - `verify_token(token: str) -> UUID | None` — верифицирует токен
+  - `mark_token_used(token: str) -> bool` — отмечает как использованный
+  - `cleanup_expired_tokens()` — удаляет истекшие токены
+- [x] Реализовать криптографическую генерацию (`secrets.token_urlsafe(32)`)
+- [x] Реализовать SHA-256 хеширование и constant-time сравнение
+- [x] Реализовать логику проверки сроков действия (30 минут)
+
+#### 14.3 Email Notifications ✅
+- [x] Обновить `app/services/email_notifications.py`
+  - `send_password_reset_email(email: str, reset_url: str, expiry_hours: float)`
+- [x] Создать email шаблоны в `app/templates/emails/password_reset/`
+  - `subject.txt` и `template.html`
+- [x] Реализовать асинхронную отправку в background
+- [x] Логирование email отправки с маскированием адреса
+
+#### 14.4 API Endpoints ✅
+- [x] Создать `app/api/v1/password_reset.py` модуль
+- [x] Реализовать `POST /api/v1/auth/password-reset/request`
+  - Валидация email
+  - Всегда возвращать 200 OK
+  - Асинхронная отправка email
+- [x] Реализовать `POST /api/v1/auth/password-reset/confirm`
+  - Валидация токена (exists, not expired, not used)
+  - Валидация пароля (8-64 символов, complexity)
+  - Проверка совпадения паролей
+  - Обновление пароля пользователя
+  - Отметить токен как использованный
+- [x] Регистрировать router в `app/main.py`
+
+#### 14.5 Security & Rate Limiting ✅
+- [x] Реализовать rate limiting для password-reset/request
+  - 3 запроса/час на email
+  - 5 запросов/час на IP
+- [x] Реализовать brute-force защиту для password-reset/confirm
+  - 10 попыток/5 минут на IP
+  - Блокировка на 15 минут при превышении
+- [x] Реализовать логирование security событий
+- [x] Обновить конфигурацию `app/core/config.py`
+
+#### 14.6 Testing ✅
+- [x] Unit тесты в `tests/test_password_reset_service.py`
+  - Генерация и хеширование токенов
+  - Проверка expiration
+  - Одноразовое использование
+  - Валидация пароля
+- [x] Integration тесты в `tests/test_password_reset_api.py`
+  - Полный flow запроса и подтверждения
+  - Тесты rate limiting
+  - Тесты brute-force detection
+  - Тесты с невалидными данными
+- [x] E2E тест в `tests/integration/test_password_reset_flow.py`
+  - Запрос → Email → Подтверждение → Вход с новым паролем
+
+#### 14.7 Documentation & API ✅
+- [x] Обновить `README.md`
+  - Добавить "Password Reset API" секцию
+  - Примеры request/response
+  - Документация error codes (400, 429)
+  - Flow: request → email → confirm
+- [x] Обновить `docs/TECHNICAL_SPECIFICATION.md`
+  - Раздел "Password Reset Функциональность"
+  - Token generation (secrets.token_urlsafe, SHA-256)
+  - Rate limits: 3/hour для request, 10/5min для confirm
+  - Security features и logging
+- [x] Обновить `docs/IMPLEMENTATION_PLAN.md`
+  - Отметить password reset реализованным
+  - Обновить список completed endpoints
+
+### Критерии приемки
+
+- ✅ Endpoint `/api/v1/auth/password-reset/request` работает
+- ✅ Endpoint `/api/v1/auth/password-reset/confirm` работает
+- ✅ Rate limiting работает (3/час на email, 10/5мин на IP)
+- ✅ Brute-force защита блокирует после 10 попыток
+- ✅ Токены генерируются криптографически стойким способом
+- ✅ Email отправляется асинхронно и не блокирует API
+- ✅ Все тесты проходят (unit + integration + E2E)
+- ✅ Нет sensitive данных в логах
+- ✅ Документация полная и актуальна
+
+### Время: 2-3 дня
+
+---
+
+## Completed Endpoints Summary
+
+### Authentication & Tokens
+- ✅ `POST /oauth/token` — Password Grant & Refresh Token Grant
+- ✅ `GET /.well-known/jwks.json` — JWKS endpoint для валидации JWT
+
+### User Management
+- ✅ `POST /api/v1/register` — Регистрация пользователя с welcome email
+- ✅ `GET /api/v1/confirm-email` — Подтверждение email адреса
+
+### Password Reset
+- ✅ `POST /api/v1/auth/password-reset/request` — Запрос на сброс пароля
+- ✅ `POST /api/v1/auth/password-reset/confirm` — Подтверждение сброса пароля
+
+### Health & Monitoring
+- ✅ `GET /health` — Health check
+- ✅ `GET /ready` — Readiness probe
+- ✅ `GET /metrics` — Prometheus metrics
+
+**Всего реализовано:** 8 основных endpoints
+
+---
+
 ## Общая оценка времени
 
 | Итерация | Описание | Время | Статус |
