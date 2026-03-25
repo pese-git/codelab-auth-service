@@ -1,8 +1,7 @@
 """Email service for sending confirmation emails"""
 
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,7 +64,7 @@ class EmailService:
         """
         try:
             # Calculate expiration time
-            expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)
+            expires_at = datetime.now(UTC) + timedelta(hours=expires_in_hours)
             
             # Create token record
             token_record = EmailConfirmationToken(
@@ -117,8 +116,8 @@ class EmailService:
         """
         try:
             # Import here to avoid circular imports
-            from app.services.email_notifications import EmailNotificationService
             from app.services.audit_service import audit_service
+            from app.services.email_notifications import EmailNotificationService
 
             # Create notification service
             notification_service = EmailNotificationService()
@@ -190,7 +189,7 @@ class EmailService:
         self,
         db: AsyncSession,
         token: str,
-    ) -> Optional[User]:
+    ) -> User | None:
         """Verify an email confirmation token and return associated user
 
         Args:
@@ -212,7 +211,7 @@ class EmailService:
             token_record = result.scalars().first()
 
             if not token_record:
-                logger.warning(f"Token not found in database")
+                logger.warning("Token not found in database")
                 # Log token verification failure to audit
                 try:
                     await audit_service.log_email_confirmation_failed(
@@ -224,7 +223,7 @@ class EmailService:
                 return None
 
             # Check if token has expired
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if token_record.expires_at < now:
                 logger.warning(
                     f"Token expired at {token_record.expires_at}",
@@ -250,7 +249,7 @@ class EmailService:
 
             if not user:
                 logger.error(
-                    f"User not found for token",
+                    "User not found for token",
                     extra={"user_id": token_record.user_id},
                 )
                 # Log user not found to audit

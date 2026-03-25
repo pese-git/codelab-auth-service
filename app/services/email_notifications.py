@@ -3,8 +3,6 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
-from uuid import UUID
 
 from app.core.config import settings
 from app.models.user import User
@@ -31,9 +29,9 @@ class EmailNotificationService:
 
     def __init__(
         self,
-        template_engine: Optional[EmailTemplateEngine] = None,
-        sender: Optional[SMTPEmailSender] = None,
-        retry_service: Optional[EmailRetryService] = None,
+        template_engine: EmailTemplateEngine | None = None,
+        sender: SMTPEmailSender | None = None,
+        retry_service: EmailRetryService | None = None,
     ):
         """Initialize notification service with dependencies
 

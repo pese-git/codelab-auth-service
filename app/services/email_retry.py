@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import random
-from typing import Optional
 
 from aiosmtplib import SMTPResponseException
 
@@ -16,7 +15,7 @@ logger = logging.getLogger("auth-service")
 class EmailRetryService:
     """Retry logic for email sending with exponential backoff and jitter"""
 
-    def __init__(self, sender: Optional[SMTPEmailSender] = None):
+    def __init__(self, sender: SMTPEmailSender | None = None):
         """Initialize retry service
 
         Args:
@@ -31,7 +30,7 @@ class EmailRetryService:
     async def send_with_retry(
         self,
         message: EmailMessage,
-        max_retries: Optional[int] = None,
+        max_retries: int | None = None,
         base_delay: int = 2,
     ) -> bool:
         """Send email with exponential backoff retry logic
@@ -72,7 +71,7 @@ class EmailRetryService:
                 self._log_attempt(message, attempt, error="Permanent error")
                 return False
 
-            except (SMTPResponseException, asyncio.TimeoutError, ConnectionError) as e:
+            except (TimeoutError, SMTPResponseException, ConnectionError) as e:
                 self._log_attempt(message, attempt, error=e)
 
                 # Check if we should retry
@@ -175,7 +174,7 @@ class EmailRetryService:
     def _log_attempt(
         message: EmailMessage,
         attempt: int,
-        error: Optional[Exception | str] = None,
+        error: Exception | str | None = None,
         success: bool = False,
     ) -> None:
         """Log email send attempt for audit

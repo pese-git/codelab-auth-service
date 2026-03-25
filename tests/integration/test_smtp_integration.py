@@ -8,10 +8,9 @@ These tests verify the complete SMTP integration flow including:
 """
 
 import asyncio
-import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -118,7 +117,7 @@ class MailHogClient:
             if any(r.get("mailbox") == recipient for r in msg.get("To", []))
         ]
 
-    async def get_message_by_id(self, message_id: str) -> Optional[dict[str, Any]]:
+    async def get_message_by_id(self, message_id: str) -> dict[str, Any] | None:
         """Get message by ID
         
         Args:
@@ -152,9 +151,9 @@ class MailHogClient:
     async def verify_message_received(
         self,
         recipient: str,
-        subject: Optional[str] = None,
+        subject: str | None = None,
         timeout: int = 5
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Wait for and verify message received
         
         Args:
@@ -309,7 +308,6 @@ class TestRetryLogic:
         - Retry succeeds
         - Verifies exponential backoff timing
         """
-        from app.services.email_retry import EmailRetryService
 
         mock_sender = AsyncMock()
         mock_sender.send_email = AsyncMock(
@@ -318,8 +316,6 @@ class TestRetryLogic:
                 True,  # Success on retry
             ]
         )
-        
-        retry_service = EmailRetryService(sender=mock_sender)
         
         # First send should fail with 4xx
         with pytest.raises(SMTPResponseException):
@@ -337,8 +333,9 @@ class TestRetryLogic:
         - Retry attempts have increasing delays
         - Total retry time follows exponential backoff pattern
         """
-        from app.services.email_retry import EmailRetryService
         import time
+
+        from app.services.email_retry import EmailRetryService
 
         mock_sender = AsyncMock()
         attempt_times = []

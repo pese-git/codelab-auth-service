@@ -1,8 +1,6 @@
 """SMTP email sender service for sending emails asynchronously"""
 
-import asyncio
 import logging
-from typing import Optional
 
 from aiosmtplib import SMTP, SMTPAuthenticationError, SMTPResponseException
 
@@ -30,7 +28,7 @@ class SMTPEmailSender:
         self.smtp_timeout = settings.smtp_timeout
 
     async def send_email(
-        self, message: EmailMessage, timeout: Optional[int] = None
+        self, message: EmailMessage, timeout: int | None = None
     ) -> bool:
         """Send email asynchronously via SMTP
 
@@ -109,7 +107,7 @@ class SMTPEmailSender:
                 )
                 raise
 
-        except asyncio.TimeoutError as e:
+        except TimeoutError:
             logger.warning(
                 f"SMTP connection timeout after {timeout}s. "
                 f"To: {self._mask_email(message.to)}"

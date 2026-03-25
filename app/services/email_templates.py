@@ -1,9 +1,8 @@
 """Email template engine for rendering email messages with Jinja2"""
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound, select_autoescape
 
