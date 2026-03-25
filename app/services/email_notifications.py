@@ -280,12 +280,13 @@ class EmailNotificationService:
         """
         try:
             # Prepare context for template
+            # Token expiration is 30 minutes (matches TOKEN_EXPIRATION_MINUTES in password_reset_service.py)
             context = {
                 "username": user.username,
                 "reset_link": (
                     f"https://codelab.local/reset-password?token={reset_token}"
                 ),
-                "expires_at": "24 hours from now",
+                "expires_at": "30 minutes from now",
                 "to_email": user.email,
                 "from_email": settings.smtp_from_email,
             }
