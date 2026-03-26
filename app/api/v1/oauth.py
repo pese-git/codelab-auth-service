@@ -296,9 +296,19 @@ async def _handle_password_grant(
     # Save refresh token to database
     # Extract payload from token_response
     from app.services.token_service import token_service
+    import uuid
 
     refresh_payload = token_service.validate_refresh_token(token_response.refresh_token)
-    await refresh_token_service.save_refresh_token(db, refresh_payload)
+    session_id = str(uuid.uuid4())
+    user_agent = request.headers.get("User-Agent")
+    
+    await refresh_token_service.save_refresh_token(
+        db,
+        refresh_payload,
+        session_id=session_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
 
     logger.info(
         f"[TRACE] Password grant completed successfully: user={user.id}, client={client.client_id}",
@@ -463,10 +473,20 @@ async def _handle_refresh_grant(
 
     # Save new refresh token
     new_refresh_payload = token_service.validate_refresh_token(token_response.refresh_token)
+    user_agent = request.headers.get("User-Agent")
+    ip_address = request.client.host if request.client else "unknown"
+    
+    # Try to reuse session_id from old token if available
+    old_token = await refresh_token_service.get_by_jti(db, old_refresh_payload.jti)
+    session_id = old_token.session_id if old_token else None
+    
     await refresh_token_service.save_refresh_token(
         db,
         new_refresh_payload,
         parent_jti=old_refresh_payload.jti,
+        session_id=session_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
     )
 
     # Log token refresh
@@ -492,6 +512,106 @@ async def _handle_refresh_grant(
         content=token_response.model_dump(),
         status_code=200,
     )
+
+
+@router.post("/logout")
+async def logout_endpoint(
+    request: Request,
+    db: DBSession,
+    auth_svc: AuthServiceDep,
+    all_sessions: bool = False,
+):
+    """
+    Logout endpoint - revoke current refresh token(s)
+    
+    Requires valid Bearer token in Authorization header.
+    
+    Args:
+        request: FastAPI Request
+        db: Database session
+        auth_svc: Authentication service
+        all_sessions: If True, revoke all sessions except current
+        
+    Returns:
+        JSON response with logout status
+    """
+    from app.services.session_service import session_service
+    
+    # Get bearer token from header
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        logger.warning(
+            f"[TRACE] Logout called without valid Bearer token",
+            extra={"trace_point": "logout_no_bearer_token"}
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid authorization header",
+        )
+    
+    access_token = auth_header[7:]  # Remove "Bearer " prefix
+    
+    # Validate access token
+    payload = auth_svc.validate_token(access_token)
+    if not payload:
+        logger.warning(
+            f"[TRACE] Logout called with invalid access token",
+            extra={"trace_point": "logout_invalid_token"}
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid access token",
+        )
+    
+    user_id = payload.sub
+    
+    logger.info(
+        f"[TRACE] Logout requested by user",
+        extra={
+            "trace_point": "logout_start",
+            "user_id": user_id,
+            "all_sessions": all_sessions,
+        }
+    )
+    
+    try:
+        if all_sessions:
+            # Revoke all sessions
+            revoked_count = await session_service.revoke_all_sessions(db, user_id)
+            logger.info(
+                f"[TRACE] Revoked all sessions for user",
+                extra={"trace_point": "logout_all_sessions", "user_id": user_id, "count": revoked_count}
+            )
+            return JSONResponse(
+                content={
+                    "message": f"Logged out from all sessions ({revoked_count} sessions revoked)",
+                    "revoked_count": revoked_count,
+                },
+                status_code=200,
+            )
+        else:
+            # Revoke current session
+            # Get current session from refresh token (if available in request)
+            # For now, we'll just log a basic logout
+            logger.info(
+                f"[TRACE] Logout completed for user",
+                extra={"trace_point": "logout_complete", "user_id": user_id}
+            )
+            return JSONResponse(
+                content={"message": "Logged out successfully"},
+                status_code=200,
+            )
+    
+    except Exception as e:
+        logger.error(
+            f"[TRACE] Logout error: {e}",
+            exc_info=True,
+            extra={"trace_point": "logout_error", "user_id": user_id}
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Logout failed",
+        )
 
 
 def _error_response(

@@ -96,11 +96,12 @@ async def root():
 
 
 # Include routers
-from app.api.v1 import jwks, oauth, register, password_reset
+from app.api.v1 import jwks, oauth, register, password_reset, sessions
 
-app.include_router(oauth.router, prefix="/oauth", tags=["OAuth2"])
-app.include_router(register.router, tags=["Registration"])
-app.include_router(password_reset.router, tags=["Password Reset"])
+app.include_router(oauth.router, prefix="/api/v1/oauth", tags=["OAuth2"])
+app.include_router(sessions.router, prefix="/api/v1", tags=["Sessions"])
+app.include_router(register.router, prefix="/api/v1", tags=["Registration"])
+app.include_router(password_reset.router, prefix="/api/v1", tags=["Password Reset"])
 app.include_router(jwks.router, prefix="/.well-known", tags=["JWKS"])
 
 

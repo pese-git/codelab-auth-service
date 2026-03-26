@@ -77,12 +77,48 @@ class RefreshToken(Base):
         comment="Hash of parent refresh token for rotation chain tracking",
     )
 
+    # Session management
+    session_id: Mapped[str] = mapped_column(
+        String(36),
+        nullable=False,
+        index=True,
+        comment="Unique session identifier for multi-device support",
+    )
+    last_used: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp of last successful token use",
+    )
+    last_rotated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp of last token rotation",
+    )
+
+    # Request metadata
+    ip_address: Mapped[str | None] = mapped_column(
+        String(45),
+        nullable=True,
+        comment="IP address of client (IPv4 or IPv6)",
+    )
+    user_agent: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="User-Agent header from client",
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+    def __init__(self, **kwargs):
+        """Initialize RefreshToken with default values"""
+        kwargs.setdefault('revoked', False)
+        kwargs.setdefault('created_at', datetime.now(timezone.utc))
+        super().__init__(**kwargs)
 
     def __repr__(self) -> str:
         return f"<RefreshToken(id={self.id}, user_id={self.user_id}, revoked={self.revoked})>"
@@ -96,3 +132,8 @@ class RefreshToken(Base):
     def is_valid(self) -> bool:
         """Check if token is valid (not revoked and not expired)"""
         return not self.revoked and not self.is_expired
+
+    @property
+    def is_current(self) -> bool:
+        """Check if token is current (valid and still active)"""
+        return self.is_valid and self.last_used is not None

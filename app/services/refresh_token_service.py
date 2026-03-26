@@ -1,8 +1,9 @@
 """Refresh Token service for token rotation"""
 
+import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import logger
@@ -19,6 +20,9 @@ class RefreshTokenService:
         db: AsyncSession,
         payload: RefreshTokenPayload,
         parent_jti: str | None = None,
+        session_id: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> RefreshToken:
         """
         Save refresh token to database
@@ -27,6 +31,9 @@ class RefreshTokenService:
             db: Database session
             payload: Refresh token payload
             parent_jti: Parent token JTI (for rotation chain)
+            session_id: Session identifier (for multi-device support)
+            ip_address: Client IP address
+            user_agent: Client User-Agent
             
         Returns:
             Created RefreshToken record
@@ -34,6 +41,10 @@ class RefreshTokenService:
         # Hash JTI
         jti_hash = hash_token_jti(payload.jti)
         parent_jti_hash = hash_token_jti(parent_jti) if parent_jti else None
+        
+        # Generate session_id if not provided
+        if not session_id:
+            session_id = str(uuid.uuid4())
 
         # Create refresh token record
         refresh_token = RefreshToken(
@@ -43,13 +54,18 @@ class RefreshTokenService:
             scope=payload.scope,
             expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
             parent_jti_hash=parent_jti_hash,
+            session_id=session_id,
+            last_used=datetime.now(timezone.utc),
+            last_rotated_at=datetime.now(timezone.utc),
+            ip_address=ip_address,
+            user_agent=user_agent,
         )
 
         db.add(refresh_token)
         await db.commit()
         await db.refresh(refresh_token)
 
-        logger.debug(f"Refresh token saved: {jti_hash[:16]}...")
+        logger.debug(f"Refresh token saved: {jti_hash[:16]}..., session_id={session_id}")
 
         return refresh_token
 
@@ -208,6 +224,128 @@ class RefreshTokenService:
             logger.info(f"Cleaned up {count} expired refresh tokens")
 
         return count
+
+    async def revoke_session(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        session_id: str,
+    ) -> bool:
+        """
+        Revoke all tokens for a specific session
+        
+        Args:
+            db: Database session
+            user_id: User ID
+            session_id: Session ID to revoke
+            
+        Returns:
+            True if any tokens were revoked
+        """
+        result = await db.execute(
+            select(RefreshToken).where(
+                and_(
+                    RefreshToken.user_id == user_id,
+                    RefreshToken.session_id == session_id,
+                    RefreshToken.revoked == False,
+                )
+            )
+        )
+        tokens = result.scalars().all()
+
+        revoked_count = 0
+        for token in tokens:
+            token.revoked = True
+            token.revoked_at = datetime.now(timezone.utc)
+            revoked_count += 1
+
+        if revoked_count > 0:
+            await db.commit()
+            logger.info(
+                f"Revoked {revoked_count} tokens for session {session_id} "
+                f"(user_id={user_id})"
+            )
+
+        return revoked_count > 0
+
+    async def get_user_sessions(
+        self,
+        db: AsyncSession,
+        user_id: str,
+    ) -> list[RefreshToken]:
+        """
+        Get all active sessions for a user
+        
+        Args:
+            db: Database session
+            user_id: User ID
+            
+        Returns:
+            List of active RefreshToken records (one per session)
+        """
+        # Get the latest token for each session
+        result = await db.execute(
+            select(RefreshToken).where(
+                and_(
+                    RefreshToken.user_id == user_id,
+                    RefreshToken.revoked == False,
+                )
+            )
+        )
+        
+        all_tokens = result.scalars().all()
+        
+        # Group by session_id, keep the latest for each
+        sessions_map = {}
+        for token in all_tokens:
+            if token.session_id not in sessions_map:
+                sessions_map[token.session_id] = token
+            elif token.created_at > sessions_map[token.session_id].created_at:
+                sessions_map[token.session_id] = token
+        
+        return list(sessions_map.values())
+
+    async def get_session_metadata(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        session_id: str,
+    ) -> dict | None:
+        """
+        Get metadata for a specific session
+        
+        Args:
+            db: Database session
+            user_id: User ID
+            session_id: Session ID
+            
+        Returns:
+            Session metadata dict or None if not found
+        """
+        result = await db.execute(
+            select(RefreshToken).where(
+                and_(
+                    RefreshToken.user_id == user_id,
+                    RefreshToken.session_id == session_id,
+                    RefreshToken.revoked == False,
+                )
+            )
+        )
+        
+        token = result.scalars().first()
+        if not token:
+            return None
+        
+        return {
+            "session_id": token.session_id,
+            "client_id": token.client_id,
+            "created_at": token.created_at,
+            "last_used": token.last_used,
+            "last_rotated_at": token.last_rotated_at,
+            "ip_address": token.ip_address,
+            "user_agent": token.user_agent,
+            "expires_at": token.expires_at,
+        }
 
 
 # Global instance

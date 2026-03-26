@@ -47,6 +47,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     scope: str | None = None
+    session_id: str | None = None
 
 
 class TokenErrorResponse(BaseModel):
@@ -86,3 +87,16 @@ class OAuthClientResponse(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class LogoutRequest(BaseModel):
+    """Schema for logout request"""
+
+    all_sessions: bool = False
+
+
+class LogoutResponse(BaseModel):
+    """Schema for logout response"""
+
+    message: str
+    revoked_count: int | None = None
