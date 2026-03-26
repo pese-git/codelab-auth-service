@@ -12,7 +12,7 @@ from app.services.audit_service import audit_service
 from app.services.email_service import email_service
 from app.services.email_notifications import EmailNotificationService
 
-router = APIRouter(prefix="/api/v1", tags=["Registration"])
+router = APIRouter()
 
 
 @router.post(

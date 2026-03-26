@@ -20,7 +20,7 @@ from app.services.audit_service import audit_service
 from app.utils.validators import validate_password
 from app.utils.crypto import hash_password
 
-router = APIRouter(prefix="/api/v1", tags=["Password Reset"])
+router = APIRouter()
 
 # Initialize services
 password_reset_service = PasswordResetService()

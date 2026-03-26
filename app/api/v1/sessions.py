@@ -7,7 +7,7 @@ from app.core.config import logger
 from app.core.dependencies import CurrentUser, DBSession
 from app.services.session_service import session_service
 
-router = APIRouter(prefix="/oauth/sessions", tags=["sessions"])
+router = APIRouter()
 
 
 @router.get("")
