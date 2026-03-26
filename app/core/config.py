@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     send_welcome_email: bool = True
     send_password_reset_email: bool = True
 
+    # Swagger UI
+    enable_swagger_ui: bool = True  # Enable/disable Swagger UI documentation
+
     # Logging
     log_level: str = "DEBUG"
 

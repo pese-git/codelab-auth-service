@@ -1,13 +1,19 @@
 """Session management endpoints"""
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
 
 from app.core.config import logger
 from app.core.dependencies import AuthServiceDep, DBSession
 from app.services.session_service import session_service
 
+security = HTTPBearer()
+
 router = APIRouter(prefix="/oauth/sessions", tags=["sessions"])
+
+# Apply security to all routes in this router
+router.dependencies = [Depends(security)]
 
 
 @router.get("")

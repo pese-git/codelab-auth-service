@@ -292,6 +292,22 @@ curl "http://localhost:8003/api/v1/confirm-email?token=<confirmation_token>"
 }
 ```
 
+### Swagger UI
+
+Swagger UI документация доступна по адресу `http://localhost:8003/docs` и позволяет протестировать API endpoints. Для работы с защищённых эндпоинтов используйте кнопку "Authorize" для ввода Bearer токена.
+
+Управление доступностью Swagger UI:
+
+```bash
+# Включить Swagger UI (по умолчанию для разработки)
+AUTH_SERVICE__ENABLE_SWAGGER_UI=true
+
+# Отключить Swagger UI (рекомендуется для production)
+AUTH_SERVICE__ENABLE_SWAGGER_UI=false
+```
+
+**Примечание:** Отключение Swagger UI скрывает документацию API, но не влияет на работу самих endpoints.
+
 ### Конфигурация SMTP
 
 Настройте SMTP через переменные окружения:

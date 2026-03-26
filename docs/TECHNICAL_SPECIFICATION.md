@@ -1745,7 +1745,79 @@ Password Grant используется **временно**, исключите
 
 ---
 
-## 22. Контакты и поддержка
+## 22. Swagger UI и OpenAPI документация
+
+### 22.1 OAuth2 Bearer интеграция
+
+Swagger UI поддерживает интеграцию с OAuth2 Bearer токенами для тестирования защищённых эндпоинтов:
+
+**Доступ к документации:**
+```
+http://localhost:8003/docs       # Swagger UI
+http://localhost:8003/redoc      # ReDoc
+```
+
+### 22.2 Использование Authorize в Swagger UI
+
+1. **Открыть Swagger UI:** `http://localhost:8003/docs`
+2. **Нажать кнопку "Authorize"** в верхнем правом углу
+3. **Получить токен:**
+   - Использовать эндпоинт `POST /oauth/token` с тестовыми учётными данными:
+   ```bash
+   curl -X POST http://localhost:8003/api/v1/oauth/token \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=password" \
+     -d "username=testuser" \
+     -d "password=password123" \
+     -d "client_id=codelab-flutter-app"
+   ```
+4. **Скопировать access_token** из ответа
+5. **Вставить в диалоговое окно авторизации** (только значение токена без "Bearer")
+6. **Нажать "Authorize"** — заголовок `Authorization: Bearer <token>` будет автоматически добавлен ко всем запросам
+
+### 22.3 Управление Swagger UI
+
+Swagger UI можно отключить в production через переменную окружения:
+
+```bash
+# Включить (по умолчанию для development)
+AUTH_SERVICE__ENABLE_SWAGGER_UI=true
+
+# Отключить (рекомендуется для production)
+AUTH_SERVICE__ENABLE_SWAGGER_UI=false
+```
+
+При отключении `ENABLE_SWAGGER_UI=false`:
+- `/docs` и `/redoc` возвращают 404
+- API endpoints продолжают работать как обычно
+- OpenAPI схема остаётся доступной через `/openapi.json` (может быть отключено настройкой FastAPI)
+
+### 22.4 Security Scheme в OpenAPI
+
+OpenAPI схема включает определение Bearer токена:
+
+```json
+{
+  "components": {
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "OAuth2 Bearer token for API authentication"
+      }
+    }
+  }
+}
+```
+
+Защищённые эндпоинты автоматически помечаются с требованием Bearer токена:
+- `/api/v1/oauth/sessions` — все методы требуют авторизации
+- `/api/v1/auth/password-reset/confirm` — требует авторизации
+
+---
+
+## 23. Контакты и поддержка
 
 **Разработчик:** Sergey Penkovsky  
 **Email:** sergey.penkovsky@gmail.com  

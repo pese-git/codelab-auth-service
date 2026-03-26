@@ -5,8 +5,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
 
 from app.core.config import logger, settings
+
+
+# Create HTTPBearer instance for documentation
+security = HTTPBearer(auto_error=False)
 
 
 @asynccontextmanager
@@ -50,10 +55,52 @@ app = FastAPI(
     title="CodeLab Auth Service",
     description="OAuth2 Authorization Server for CodeLab Platform",
     version=settings.version,
-    docs_url="/docs" if settings.is_development else None,
-    redoc_url="/redoc" if settings.is_development else None,
+    docs_url="/docs" if settings.enable_swagger_ui else None,
+    redoc_url="/redoc" if settings.enable_swagger_ui else None,
     lifespan=lifespan,
 )
+
+# Add OpenAPI security scheme for Bearer token
+original_openapi = app.openapi
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    # Get the default OpenAPI schema from FastAPI
+    openapi_schema = original_openapi()
+    
+    # Add Bearer security scheme to components
+    if "components" not in openapi_schema:
+        openapi_schema["components"] = {}
+    
+    openapi_schema["components"]["securitySchemes"] = {
+        "Bearer": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "OAuth2 Bearer token for API authentication",
+        }
+    }
+    
+    # Add security requirement to protected endpoints
+    protected_paths = [
+        "/api/v1/oauth/sessions",
+        "/api/v1/auth/password-reset/confirm",
+    ]
+    
+    for path, path_item in openapi_schema.get("paths", {}).items():
+        for operation in path_item.values():
+            if isinstance(operation, dict):
+                # Add security to protected endpoints
+                if any(protected in path for protected in protected_paths):
+                    if "security" not in operation:
+                        operation["security"] = [{"Bearer": []}]
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # CORS middleware
 app.add_middleware(
