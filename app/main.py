@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.openapi.utils import get_openapi
 
 from app.core.config import logger, settings
 
@@ -56,45 +55,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add OpenAPI security scheme for Bearer token
-original_openapi = app.openapi
 
-def custom_openapi():
-    """
-    Customize OpenAPI schema to include authentication.
-    
-    Adds security schemes for Bearer token authentication.
-    Security is applied only to endpoints that require authentication.
-    """
-    if app.openapi_schema:
-        return app.openapi_schema
-    
-    openapi_schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        description=app.description,
-        routes=app.routes,
-    )
-    
-    # Add security schemes
-    openapi_schema["components"]["securitySchemes"] = {
-        "BearerAuth": {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
-            "description": "Bearer token (JWT access token)",
-        },
-    }
-    
-    # FastAPI will automatically apply security to endpoints that use Depends(security)
-    # No need to apply security globally
-    
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-
-# Override OpenAPI schema generator
-app.openapi = custom_openapi  # type: ignore[assignment]
 
 # CORS middleware
 app.add_middleware(
