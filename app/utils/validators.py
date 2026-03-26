@@ -1,6 +1,7 @@
 """Input validation utilities"""
 
 import re
+from app.core.config import settings
 
 
 def validate_email(email: str) -> tuple[bool, str | None]:
@@ -30,14 +31,15 @@ def validate_email(email: str) -> tuple[bool, str | None]:
 
 def validate_password(password: str) -> tuple[bool, str | None]:
     """
-    Validate password strength
+    Validate password strength based on configuration rules
     
-    Requirements:
-    - Minimum 8 characters
-    - At least one uppercase letter
-    - At least one lowercase letter
-    - At least one digit
-    - At least one special character
+    Configuration-based requirements:
+    - Minimum length (from settings.password_min_length)
+    - Maximum length (from settings.password_max_length)
+    - Optional uppercase letter requirement
+    - Optional lowercase letter requirement
+    - Optional digit requirement
+    - Optional special character requirement
     
     Args:
         password: Password to validate
@@ -48,22 +50,22 @@ def validate_password(password: str) -> tuple[bool, str | None]:
     if not password:
         return False, "Password is required"
 
-    if len(password) < 8:
-        return False, "Password must be at least 8 characters long"
+    if len(password) < settings.password_min_length:
+        return False, f"Password must be at least {settings.password_min_length} characters long"
 
-    if len(password) > 72:
-        return False, "Password is too long (max 72 characters for bcrypt)"
+    if len(password) > settings.password_max_length:
+        return False, f"Password must not exceed {settings.password_max_length} characters"
 
-    if not re.search(r"[A-Z]", password):
+    if settings.password_require_uppercase and not re.search(r"[A-Z]", password):
         return False, "Password must contain at least one uppercase letter"
 
-    if not re.search(r"[a-z]", password):
+    if settings.password_require_lowercase and not re.search(r"[a-z]", password):
         return False, "Password must contain at least one lowercase letter"
 
-    if not re.search(r"\d", password):
+    if settings.password_require_digits and not re.search(r"\d", password):
         return False, "Password must contain at least one digit"
 
-    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+    if settings.password_require_special_chars and not re.search(settings.password_special_chars_pattern, password):
         return False, "Password must contain at least one special character"
 
     return True, None

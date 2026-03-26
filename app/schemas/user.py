@@ -4,6 +4,8 @@ import re
 from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from app.core.config import settings
+from app.utils.validators import validate_password as validate_password_rules
 
 
 class UserBase(BaseModel):
@@ -68,9 +70,9 @@ class UserRegister(BaseModel):
     )
     password: str = Field(
         ...,
-        min_length=8,
-        max_length=128,
-        description="Password (8-128 characters)",
+        min_length=settings.password_min_length,
+        max_length=settings.password_max_length,
+        description=f"Password ({settings.password_min_length}-{settings.password_max_length} characters)",
     )
 
     @field_validator("username")
@@ -85,12 +87,11 @@ class UserRegister(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def validate_password(cls, v: str) -> str:
-        """Validate password requirements"""
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if len(v) > 128:
-            raise ValueError("Password must not exceed 128 characters")
+    def validate_password_field(cls, v: str) -> str:
+        """Validate password requirements using centralized validation rules"""
+        is_valid, error_message = validate_password_rules(v)
+        if not is_valid:
+            raise ValueError(error_message)
         return v
 
 

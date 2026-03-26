@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     password_reset_request_limit: int = 3  # requests per hour per email
     password_reset_token_expiration_minutes: int = 30  # token TTL
 
+    # Password Validation Rules
+    password_min_length: int = 8  # minimum password length
+    password_max_length: int = 128  # maximum password length
+    password_require_uppercase: bool = True  # require at least one uppercase letter
+    password_require_lowercase: bool = True  # require at least one lowercase letter
+    password_require_digits: bool = True  # require at least one digit
+    password_require_special_chars: bool = True  # require at least one special character
+    password_special_chars_pattern: str = r"[!@#$%^&*(),.?\":{}|<>]"  # pattern for special characters
+
     # SMTP Configuration for email
     smtp_host: str = "localhost"
     smtp_port: int = 587
