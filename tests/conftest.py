@@ -9,6 +9,14 @@ from datetime import datetime
 
 import pytest
 
+# Загрузка переменных окружения из .env.test
+from dotenv import load_dotenv
+
+# Загружаем .env.test перед импортом настроек приложения
+env_test_path = Path(__file__).parent.parent / ".env.test"
+if env_test_path.exists():
+    load_dotenv(env_test_path, override=True)
+
 
 # Configure pytest markers for integration tests
 def pytest_configure(config):
