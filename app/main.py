@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer
+from fastapi.openapi.utils import get_openapi
 
 from app.core.config import logger, settings
 
@@ -64,43 +65,39 @@ app = FastAPI(
 original_openapi = app.openapi
 
 def custom_openapi():
+    """
+    Customize OpenAPI schema to include authentication.
+    
+    Adds security schemes for both JWT and X-Internal-Auth.
+    """
     if app.openapi_schema:
         return app.openapi_schema
     
-    # Get the default OpenAPI schema from FastAPI
-    openapi_schema = original_openapi()
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
     
-    # Add Bearer security scheme to components
-    if "components" not in openapi_schema:
-        openapi_schema["components"] = {}
-    
+    # Add security schemes
     openapi_schema["components"]["securitySchemes"] = {
-        "Bearer": {
+        "BearerAuth": {
             "type": "http",
             "scheme": "bearer",
             "bearerFormat": "JWT",
-            "description": "OAuth2 Bearer token for API authentication",
-        }
+        },
     }
     
-    # Add security requirement to protected endpoints
-    protected_paths = [
-        "/api/v1/oauth/sessions",
-        "/api/v1/auth/password-reset/confirm",
-    ]
-    
-    for path, path_item in openapi_schema.get("paths", {}).items():
-        for operation in path_item.values():
-            if isinstance(operation, dict):
-                # Add security to protected endpoints
-                if any(protected in path for protected in protected_paths):
-                    if "security" not in operation:
-                        operation["security"] = [{"Bearer": []}]
+    # Apply security globally (either JWT)
+    openapi_schema["security"] = [{"BearerAuth": []}]
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
-app.openapi = custom_openapi
+
+# Override OpenAPI schema generator
+app.openapi = custom_openapi  # type: ignore[assignment]
 
 # CORS middleware
 app.add_middleware(

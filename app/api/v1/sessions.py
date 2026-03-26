@@ -12,7 +12,10 @@ security = HTTPBearer()
 
 router = APIRouter(prefix="/oauth/sessions", tags=["sessions"])
 
-# Apply security to all routes in this router
+# Apply HTTPBearer security to all routes in this router
+# FastAPI automatically adds security requirement to OpenAPI schema for endpoints
+# that have HTTPBearer dependencies. The custom_openapi() function in main.py
+# defines the Bearer scheme in OpenAPI components.
 router.dependencies = [Depends(security)]
 
 

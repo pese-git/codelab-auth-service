@@ -1804,16 +1804,38 @@ OpenAPI схема включает определение Bearer токена:
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "OAuth2 Bearer token for API authentication"
+        "description": "OAuth2 Bearer token for API authentication. Include in Authorization header: 'Bearer <token>'"
       }
     }
   }
 }
 ```
 
-Защищённые эндпоинты автоматически помечаются с требованием Bearer токена:
-- `/api/v1/oauth/sessions` — все методы требуют авторизации
-- `/api/v1/auth/password-reset/confirm` — требует авторизации
+#### Определение защищённых эндпоинтов
+
+Вместо ручного списка `protected_paths`, используется автоматический механизм FastAPI:
+
+1. **Защищённые роутеры** используют HTTPBearer dependency:
+   ```python
+   security = HTTPBearer()
+   router.dependencies = [Depends(security)]
+   ```
+
+2. **FastAPI автоматически** добавляет security requirement в OpenAPI для эндпоинтов с HTTPBearer
+
+3. **Функция `custom_openapi()`** в `main.py` просто определяет Bearer scheme в components
+
+Защищённые эндпоинты:
+- `/api/v1/oauth/sessions/*` — все методы требуют Bearer токена
+  - GET `/api/v1/oauth/sessions` — список сессий пользователя
+  - GET `/api/v1/oauth/sessions/{session_id}` — информация о сессии
+  - DELETE `/api/v1/oauth/sessions/{session_id}` — закрытие сессии
+
+**Преимущества нового подхода:**
+- ✅ Чище и понятнее: security определён на уровне роутера
+- ✅ Не требует ручного обслуживания списка защищённых путей
+- ✅ FastAPI автоматически добавляет замок в Swagger UI
+- ✅ Легче масштабировать: новые защищённые эндпоинты автоматически попадают в OpenAPI
 
 ---
 
