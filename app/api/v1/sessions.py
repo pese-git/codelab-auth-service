@@ -1,29 +1,19 @@
 """Session management endpoints"""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBearer
 
 from app.core.config import logger
-from app.core.dependencies import AuthServiceDep, DBSession
+from app.core.dependencies import CurrentUser, DBSession
 from app.services.session_service import session_service
 
-security = HTTPBearer()
-
 router = APIRouter(prefix="/oauth/sessions", tags=["sessions"])
-
-# Apply HTTPBearer security to all routes in this router
-# FastAPI automatically adds security requirement to OpenAPI schema for endpoints
-# that have HTTPBearer dependencies. The custom_openapi() function in main.py
-# defines the Bearer scheme in OpenAPI components.
-router.dependencies = [Depends(security)]
 
 
 @router.get("")
 async def list_sessions(
-    request: Request,
     db: DBSession,
-    auth_svc: AuthServiceDep,
+    current_user: CurrentUser,
 ):
     """
     List all active sessions for the current user
@@ -33,51 +23,25 @@ async def list_sessions(
     Returns:
         List of active sessions with metadata
     """
-    # Get bearer token
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        logger.warning(
-            f"[TRACE] List sessions called without valid Bearer token",
-            extra={"trace_point": "list_sessions_no_bearer"}
-        )
-        raise HTTPException(
-            status_code=401,
-            detail="Missing or invalid authorization header",
-        )
-    
-    access_token = auth_header[7:]
-    
-    # Validate access token
-    payload = auth_svc.validate_token(access_token)
-    if not payload:
-        logger.warning(
-            f"[TRACE] List sessions called with invalid token",
-            extra={"trace_point": "list_sessions_invalid_token"}
-        )
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid access token",
-        )
-    
-    user_id = payload.sub
-    
+    user_id = current_user.sub
+
     logger.info(
-        f"[TRACE] List sessions requested",
+        "[TRACE] List sessions requested",
         extra={"trace_point": "list_sessions_start", "user_id": user_id}
     )
-    
+
     try:
         sessions = await session_service.list_user_sessions(db, user_id)
-        
+
         logger.debug(
-            f"[TRACE] Sessions retrieved successfully",
+            "[TRACE] Sessions retrieved successfully",
             extra={
                 "trace_point": "list_sessions_success",
                 "user_id": user_id,
                 "count": len(sessions),
             }
         )
-        
+
         return JSONResponse(
             content={
                 "sessions": [
@@ -95,7 +59,7 @@ async def list_sessions(
             },
             status_code=200,
         )
-    
+
     except Exception as e:
         logger.error(
             f"[TRACE] List sessions error: {e}",
@@ -105,14 +69,13 @@ async def list_sessions(
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve sessions",
-        )
+        ) from e
 
 
 @router.get("/{session_id}")
 async def get_session(
-    request: Request,
     db: DBSession,
-    auth_svc: AuthServiceDep,
+    current_user: CurrentUser,
     session_id: str,
 ):
     """
@@ -126,41 +89,23 @@ async def get_session(
     Returns:
         Session details
     """
-    # Get bearer token
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Missing or invalid authorization header",
-        )
-    
-    access_token = auth_header[7:]
-    
-    # Validate access token
-    payload = auth_svc.validate_token(access_token)
-    if not payload:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid access token",
-        )
-    
-    user_id = payload.sub
-    
+    user_id = current_user.sub
+
     logger.info(
-        f"[TRACE] Get session requested",
+        "[TRACE] Get session requested",
         extra={
             "trace_point": "get_session_start",
             "user_id": user_id,
             "session_id": session_id,
         }
     )
-    
+
     try:
         session_info = await session_service.get_session_info(db, user_id, session_id)
-        
+
         if not session_info:
             logger.warning(
-                f"[TRACE] Session not found or not owned by user",
+                "[TRACE] Session not found or not owned by user",
                 extra={
                     "trace_point": "get_session_not_found",
                     "user_id": user_id,
@@ -171,16 +116,16 @@ async def get_session(
                 status_code=404,
                 detail="Session not found",
             )
-        
+
         logger.debug(
-            f"[TRACE] Session retrieved successfully",
+            "[TRACE] Session retrieved successfully",
             extra={
                 "trace_point": "get_session_success",
                 "user_id": user_id,
                 "session_id": session_id,
             }
         )
-        
+
         return JSONResponse(
             content={
                 "session_id": session_info["session_id"],
@@ -195,7 +140,7 @@ async def get_session(
             },
             status_code=200,
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -211,14 +156,13 @@ async def get_session(
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve session",
-        )
+        ) from e
 
 
 @router.delete("/{session_id}")
 async def revoke_session(
-    request: Request,
     db: DBSession,
-    auth_svc: AuthServiceDep,
+    current_user: CurrentUser,
     session_id: str,
 ):
     """
@@ -232,41 +176,23 @@ async def revoke_session(
     Returns:
         Revocation confirmation
     """
-    # Get bearer token
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Missing or invalid authorization header",
-        )
-    
-    access_token = auth_header[7:]
-    
-    # Validate access token
-    payload = auth_svc.validate_token(access_token)
-    if not payload:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid access token",
-        )
-    
-    user_id = payload.sub
-    
+    user_id = current_user.sub
+
     logger.info(
-        f"[TRACE] Revoke session requested",
+        "[TRACE] Revoke session requested",
         extra={
             "trace_point": "revoke_session_start",
             "user_id": user_id,
             "session_id": session_id,
         }
     )
-    
+
     try:
         success = await session_service.revoke_session(db, user_id, session_id)
-        
+
         if not success:
             logger.warning(
-                f"[TRACE] Session not found for revocation",
+                "[TRACE] Session not found for revocation",
                 extra={
                     "trace_point": "revoke_session_not_found",
                     "user_id": user_id,
@@ -277,21 +203,21 @@ async def revoke_session(
                 status_code=404,
                 detail="Session not found",
             )
-        
+
         logger.info(
-            f"[TRACE] Session revoked successfully",
+            "[TRACE] Session revoked successfully",
             extra={
                 "trace_point": "revoke_session_success",
                 "user_id": user_id,
                 "session_id": session_id,
             }
         )
-        
+
         return JSONResponse(
             content={"message": f"Session {session_id} revoked successfully"},
             status_code=200,
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -307,4 +233,4 @@ async def revoke_session(
         raise HTTPException(
             status_code=500,
             detail="Failed to revoke session",
-        )
+        ) from e
