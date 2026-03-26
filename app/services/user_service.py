@@ -175,8 +175,21 @@ class UserService:
             )
             return None
 
+        # Check if email is confirmed (if required by settings)
+        if settings.require_email_confirmation and not user.email_confirmed:
+            logger.warning(
+                f"[TRACE] Authentication failed: email not confirmed",
+                extra={
+                    "trace_point": "email_not_confirmed",
+                    "user_id": user.id,
+                    "username": username,
+                    "email_confirmed": user.email_confirmed,
+                }
+            )
+            return None
+
         logger.debug(
-            f"[TRACE] User is active, verifying password",
+            f"[TRACE] User is active and email confirmed, verifying password",
             extra={"trace_point": "verify_password", "user_id": user.id}
         )
 

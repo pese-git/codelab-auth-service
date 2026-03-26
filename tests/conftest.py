@@ -38,6 +38,7 @@ class MockUser:
     email: str
     password_hash: str
     email_confirmed: bool = False
+    is_active: bool = True
     created_at: datetime = None
     updated_at: datetime = None
 
