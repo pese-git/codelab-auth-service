@@ -21,6 +21,7 @@ RUN uv pip install --system --no-cache -e .
 # Копируем код приложения
 COPY app/ ./app/
 COPY migration/ ./migration/
+COPY scripts/ ./scripts/
 COPY alembic.ini ./
 
 # Создаем директории для данных и ключей
