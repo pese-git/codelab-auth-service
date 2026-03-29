@@ -202,18 +202,28 @@ client_id=codelab-flutter-app
 
 ### 2. GET /.well-known/jwks.json
 
-**Назначение:** Получить публичные RSA ключи для валидации JWT
+**Назначение:** Получить публичные RSA ключи в формате JWKS (RFC 7517) для валидации JWT токенов
+
+**Аудитория:** Core Service, Gateway, другие микросервисы
 
 **Request:**
 
 ```http
 GET /.well-known/jwks.json HTTP/1.1
 Host: auth.codelab.local
+Accept: application/json
 ```
 
 **Parameters:** Нет
 
 **Success Response (200 OK):**
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Cache-Control: public, max-age=3600
+Access-Control-Allow-Origin: *
+```
 
 ```json
 {
@@ -225,28 +235,139 @@ Host: auth.codelab.local
       "alg": "RS256",
       "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
       "e": "AQAB"
+    },
+    {
+      "kty": "RSA",
+      "use": "sig",
+      "kid": "2024-01-key-2",
+      "alg": "RS256",
+      "n": "xjlCRBKHfh5nvBELlKXXM2S5GZ8w4-JKZH6kN8P5Q6R7S8T9U0V1W2X3Y4Z5A6B7C8D9E0F1G2H3I4J5K6L7M8N9O0P1Q2R3S4T5U6V7W8X9Y0Z1A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6P7Q8R9S0T1U2V3W4X5Y6Z7A8B9C0D1E2F3G4H5I6J7K8L9M0N1O2P3Q4R5S6T7U8V9W0X1Y2Z3A4B5C6D7E8F9G0H1I2J3K4L5M6N7O8P9Q0R1S2T3U4V5W6X7Y8Z7A8B9",
+      "e": "AQAB"
     }
   ]
 }
 ```
 
-**Fields:**
+**Response Fields (JWKS Format - RFC 7517):**
 
-| Поле | Описание |
-|------|---------|
-| `kty` | Key type (всегда `RSA`) |
-| `use` | Usage (всегда `sig` — signature) |
-| `kid` | Key ID (идентификатор ключа) |
-| `alg` | Algorithm (всегда `RS256`) |
-| `n` | Modulus (часть публичного ключа) |
-| `e` | Exponent (часть публичного ключа, всегда `AQAB`) |
+| Поле | Тип | Описание | Пример |
+|------|-----|---------|--------|
+| `keys` | array | Массив публичных ключей | `[{...}, {...}]` |
+| `kty` | string | Key type (всегда `RSA`) | `"RSA"` |
+| `use` | string | Key usage (всегда `sig` для подписи) | `"sig"` |
+| `kid` | string | Key ID для ротации ключей | `"2024-01-key-1"` |
+| `alg` | string | Алгоритм подписи (всегда `RS256`) | `"RS256"` |
+| `n` | string | RSA модулус (Base64URL) | `"0vx7agoebG..."` |
+| `e` | string | RSA публичный экспонент (всегда `AQAB`) | `"AQAB"` |
 
-**Notes:**
-- Кэшируется в Redis на 1 час
-- Может содержать несколько ключей (для rotation)
-- Используется для валидации JWT в других сервисах (Gateway, Agent Runtime)
+**Response Headers:**
 
-**Error Response:**
+| Header | Значение | Описание |
+|--------|----------|---------|
+| `Content-Type` | `application/json` | JSON формат |
+| `Cache-Control` | `public, max-age=3600` | Кэшировать на 1 час (3600 сек) |
+| `Access-Control-Allow-Origin` | `*` | Доступно с любых доменов |
+
+**Использование в других сервисах:**
+
+```python
+# Core Service пример
+from app.services.jwks_client import JWKSClient
+
+client = JWKSClient(
+    jwks_url="http://codelab-auth-service:8003/.well-known/jwks.json"
+)
+
+# Получить JWKS с кэшированием (TTL 1 час)
+jwks = await client.get_jwks()
+
+# Получить публичный ключ по kid
+public_key = await client.get_public_key(kid="2024-01-key-1")
+
+# Валидировать JWT токен
+payload = await client.validate_token(
+    token=access_token,
+    issuer="https://auth.codelab.local",
+    audience="codelab-api"
+)
+```
+
+**Ротация ключей:**
+
+```
+Сценарий: Ротация ключей с kid "2024-01-key-1" на "2024-01-key-2"
+
+Время    JWKS содержит
+───────────────────────────────────────
+До ротации:
+T0       ├─ 2024-01-key-1 (активный)
+         └─ только этот ключ
+
+Во время ротации:
+T1-T30   ├─ 2024-01-key-1 (старый, для валидации)
+         └─ 2024-01-key-2 (новый, для подписи)
+
+После ротации:
+T31+     ├─ 2024-01-key-2 (только активный)
+         └─ старый ключ удалён
+
+Примечание:
+- Новые токены подписываются new kid
+- Старые токены со старым kid остаются валидны
+- Core Service получает новый JWKS автоматически
+```
+
+**Примеры использования:**
+
+**cURL:**
+
+```bash
+# Получить JWKS
+curl -H "Accept: application/json" \
+  http://localhost:8003/.well-known/jwks.json | jq
+
+# Результат:
+# {
+#   "keys": [
+#     {
+#       "kty": "RSA",
+#       "use": "sig",
+#       "kid": "2024-01-key-1",
+#       ...
+#     }
+#   ]
+# }
+```
+
+**Python (декодировать и использовать):**
+
+```python
+import httpx
+from jose import jwt
+
+# Получить JWKS
+async with httpx.AsyncClient() as client:
+    response = await client.get(
+        "http://codelab-auth-service:8003/.well-known/jwks.json"
+    )
+    jwks = response.json()
+
+# Получить kid из токена
+token_header = jwt.get_unverified_header(access_token)
+kid = token_header["kid"]  # "2024-01-key-1"
+
+# Найти нужный ключ в JWKS
+key_data = None
+for key in jwks["keys"]:
+    if key["kid"] == kid:
+        key_data = key
+        break
+
+# Использовать key_data для валидации
+# (обычно jose или pyJWT делают это автоматически)
+```
+
+**Error Responses:**
 
 ```json
 // 500 Internal Server Error — Ошибка при загрузке ключей
@@ -255,6 +376,21 @@ Host: auth.codelab.local
   "error_description": "Unable to retrieve public keys"
 }
 ```
+
+**Notes:**
+
+- ✅ **Публичный endpoint** — не требует аутентификации
+- ✅ **Кэшируется** — Client кэширует на 1 час, обновляется автоматически
+- ✅ **Может содержать несколько ключей** — для плавной ротации
+- ✅ **RFC 7517/7518 совместимость** — стандартный формат JWKS
+- ✅ **CORS** — доступно с других доменов
+
+**Документация интеграции:**
+
+Подробнее о использовании JWKS и JWT RS256:
+- [`jwt-rs256-integration.md`](jwt-rs256-integration.md) — Полная спецификация JWT RS256
+- [Core Service: `jwt-validation/spec.md`](../../codelab-core-service/openspec/specs/jwt-validation/spec.md) — Валидация JWT
+- [Core Service: `integration-with-auth-service/spec.md`](../../codelab-core-service/openspec/specs/integration-with-auth-service/spec.md) — Интеграция
 
 ---
 
