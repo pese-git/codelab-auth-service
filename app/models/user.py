@@ -73,6 +73,23 @@ class User(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    
+    # Soft delete fields
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        index=True,
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    deletion_reason: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
