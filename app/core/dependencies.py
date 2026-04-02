@@ -2,11 +2,12 @@
 
 from typing import Annotated
 
+import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import logger
+from app.core.config import logger, settings
 from app.models.database import get_db
 from app.schemas.token import AccessTokenPayload
 from app.services.auth_service import auth_service
@@ -16,6 +17,24 @@ from app.services.user_service import user_service
 
 # Database session dependency
 DBSession = Annotated[AsyncSession, Depends(get_db)]
+
+# Redis dependency
+_redis_client: aioredis.Redis | None = None
+
+async def get_redis() -> aioredis.Redis:
+    """Get Redis async client"""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = aioredis.from_url(settings.redis_url)
+    return _redis_client
+
+async def close_redis() -> None:
+    """Close Redis connection"""
+    global _redis_client
+    if _redis_client:
+        await _redis_client.close()
+        _redis_client = None
+
 
 
 # Service dependencies

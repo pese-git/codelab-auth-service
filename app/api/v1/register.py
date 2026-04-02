@@ -4,13 +4,14 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_db
+from app.core.dependencies import get_db, get_redis
 from app.core.config import logger, settings
 from app.schemas.user import UserRegister, UserRegistrationResponse
 from app.services.user_service import user_service
 from app.services.audit_service import audit_service
 from app.services.email_service import email_service
 from app.services.email_notifications import EmailNotificationService
+from redis.asyncio import Redis
 
 router = APIRouter()
 
@@ -30,6 +31,7 @@ async def register(
     request: Request,
     user_data: UserRegister,
     db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ) -> UserRegistrationResponse:
     """
     Register a new user.
@@ -72,6 +74,40 @@ async def register(
                 "client_ip": client_ip,
             }
         )
+        
+        # Publish user.created event to Redis Streams for event-driven synchronization
+        try:
+            import json
+            from datetime import datetime
+            
+            event_data = {
+                "user_id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "is_active": user.is_active,
+                "is_verified": user.is_verified,
+                "created_at": user.created_at.isoformat() if user.created_at else datetime.utcnow().isoformat(),
+            }
+            
+            # Publish to Redis Streams using core-service's stream name
+            await redis.xadd(
+                "user_events",
+                {
+                    "event_type": "user.created",
+                    "user_id": user.id,
+                    "data": json.dumps(event_data),
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
+            logger.debug(
+                f"Published user.created event for user {user.id}",
+                extra={"user_id": user.id}
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to publish user.created event: {e}",
+                extra={"user_id": user.id}
+            )
         
         # Schedule background tasks for email sending (graceful degradation)
         try:
