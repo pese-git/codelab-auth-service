@@ -23,7 +23,7 @@
 
 #### Scenario: Примеры значений токенов в документации
 
-- **WHEN** пользователь просматривает эндпоинт `/oauth/token` в Swagger
+- **WHEN** пользователь просматривает эндпоинт `/api/v1/auth/oauth/token` в Swagger
 - **THEN** ответ ДОЛЖЕН включать реальные примеры структуры `access_token`, `token_type`, `expires_in` и `scope`
 
 ### Requirement: Базовый URL и версия API в документации

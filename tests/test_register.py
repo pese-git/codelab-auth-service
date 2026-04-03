@@ -295,7 +295,7 @@ class TestRegistrationEndpointIntegration:
             mock_email_service.return_value = mock_email_instance
             
             # Act
-            response = client.post("/api/v1/register", json=payload)
+            response = client.post("/api/v1/auth/register", json=payload)
             
             # Assert
             assert response.status_code == 201
@@ -326,7 +326,7 @@ class TestRegistrationEndpointIntegration:
             mock_audit.return_value = None
             
             # Act
-            response = client.post("/api/v1/register", json=payload)
+            response = client.post("/api/v1/auth/register", json=payload)
             
             # Assert
             assert response.status_code == 409
@@ -354,7 +354,7 @@ class TestRegistrationEndpointIntegration:
             mock_audit.return_value = None
             
             # Act
-            response = client.post("/api/v1/register", json=payload)
+            response = client.post("/api/v1/auth/register", json=payload)
             
             # Assert
             assert response.status_code == 409
@@ -374,7 +374,7 @@ class TestRegistrationEndpointIntegration:
         }
         
         # Act
-        response = client.post("/api/v1/register", json=payload)
+        response = client.post("/api/v1/auth/register", json=payload)
         
         # Assert
         assert response.status_code == 422
@@ -410,7 +410,7 @@ class TestRegistrationEndpointIntegration:
             mock_register.return_value = mock_user
             
             # Act
-            response = client.post("/api/v1/register", json=payload)
+            response = client.post("/api/v1/auth/register", json=payload)
             
             # Assert
             assert response.status_code == 201
@@ -450,7 +450,7 @@ class TestRegistrationEndpointIntegration:
             mock_register.return_value = mock_user
             
             # Act
-            response = client.post("/api/v1/register", json=payload)
+            response = client.post("/api/v1/auth/register", json=payload)
             
             # Assert
             assert response.status_code == 201
@@ -483,7 +483,7 @@ class TestRegistrationEndpointIntegration:
             mock_register.return_value = mock_user
             
             # Act
-            response = client.post("/api/v1/register", json=payload)
+            response = client.post("/api/v1/auth/register", json=payload)
             
             # Assert
             assert response.status_code == 201
@@ -523,7 +523,7 @@ class TestRegistrationEndpointIntegration:
             mock_email_service.return_value = mock_email_instance
             
             # Act
-            response = client.post("/api/v1/register", json=payload)
+            response = client.post("/api/v1/auth/register", json=payload)
             
             # Assert
             assert response.status_code == 201
@@ -561,7 +561,7 @@ class TestRegistrationSecurity:
         # Act & Assert
         # This should fail validation (invalid characters) or be safely escaped
         with patch("app.api.v1.register.user_service.register_user"):
-            response = client.post("/api/v1/register", json=payload)
+            response = client.post("/api/v1/auth/register", json=payload)
             # Should either be 422 (validation) or handled safely
             assert response.status_code in [422, 409, 500]
 
@@ -579,7 +579,7 @@ class TestRegistrationSecurity:
         
         # Act & Assert
         # Email validation should reject this
-        response = client.post("/api/v1/register", json=payload)
+        response = client.post("/api/v1/auth/register", json=payload)
         assert response.status_code == 422  # Invalid email format
 
     def test_xss_protection_in_username(self, client):
@@ -596,7 +596,7 @@ class TestRegistrationSecurity:
         
         # Act & Assert
         # Should be rejected by username validation (invalid characters)
-        response = client.post("/api/v1/register", json=payload)
+        response = client.post("/api/v1/auth/register", json=payload)
         assert response.status_code == 422  # Invalid username format
 
     def test_timing_attack_protection_duplicate_email(self, client):
@@ -631,7 +631,7 @@ class TestRegistrationSecurity:
             # Test duplicate email
             mock_register.side_effect = ValueError("Email already registered")
             start1 = time.time()
-            response1 = client.post("/api/v1/register", json=payload1)
+            response1 = client.post("/api/v1/auth/register", json=payload1)
             time1 = time.time() - start1
             assert response1.status_code == 409
             
@@ -645,7 +645,7 @@ class TestRegistrationSecurity:
             mock_register.return_value = mock_user
             
             start2 = time.time()
-            response2 = client.post("/api/v1/register", json=payload2)
+            response2 = client.post("/api/v1/auth/register", json=payload2)
             time2 = time.time() - start2
             assert response2.status_code == 201
             
@@ -658,21 +658,21 @@ class TestRegistrationSecurity:
     async def test_password_complexity_not_enforced_by_schema(self):
         """Test password complexity validation.
         
-        Verifies that password minimum length is enforced but no character
-        requirements are mandated by the schema (complexity can be optional).
+        Verifies that password minimum length is enforced but no additional character
+        requirements beyond uppercase letter are mandated by the schema.
         """
         # Arrange - minimal but valid password
         valid_data = {
             "email": "user@example.com",
             "username": "testuser",
-            "password": "12345678",  # 8 chars, no special chars or numbers
+            "password": "Testpass1!",  # 10 chars with uppercase and special char
         }
         
         # Act
         user_data = UserRegister(**valid_data)
         
         # Assert
-        assert user_data.password == "12345678"
+        assert user_data.password == "Testpass1!"
         assert len(user_data.password) >= 8
 
     def test_rate_limiting_protection(self, client):

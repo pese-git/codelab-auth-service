@@ -29,7 +29,7 @@ email_notification_service = EmailNotificationService()
 
 
 @router.post(
-    "/auth/password-reset/request",
+    "/password-reset/request",
     response_model=PasswordResetResponse,
     status_code=status.HTTP_200_OK,
     responses={
@@ -144,7 +144,7 @@ async def request_password_reset(
 
 
 @router.post(
-    "/auth/password-reset/confirm",
+    "/password-reset/confirm",
     response_model=PasswordResetResponse,
     status_code=status.HTTP_200_OK,
     responses={

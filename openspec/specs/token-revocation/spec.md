@@ -8,11 +8,11 @@ TBD - created by archiving change implement-refresh-token-flow. Update Purpose a
 Система ДОЛЖНА предоставлять endpoint для выхода пользователя из системы с отзывом токенов.
 
 #### Scenario: Logout текущей сессии
-- **WHEN** аутентифицированный пользователь отправляет POST /api/v1/oauth/logout
+- **WHEN** аутентифицированный пользователь отправляет POST /api/v1/auth/oauth/logout
 - **THEN** система отозывает все refresh токены текущей сессии (revoked=True, revoked_at=now) и возвращает 200 OK с сообщением о успехе
 
 #### Scenario: Logout всех сессий
-- **WHEN** пользователь отправляет POST /api/v1/oauth/logout с параметром all_sessions=true
+- **WHEN** пользователь отправляет POST /api/v1/auth/oauth/logout с параметром all_sessions=true
 - **THEN** система отозывает все refresh токены всех сессий пользователя и возвращает 200 OK
 
 ### Requirement: Детектирование атак переиспользования

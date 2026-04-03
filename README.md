@@ -147,7 +147,7 @@ curl http://localhost:8003/health
 #### Password Grant
 
 ```bash
-curl -X POST http://localhost:8003/oauth/token \
+curl -X POST http://localhost:8003/api/v1/auth/oauth/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=password" \
   -d "username=test@example.com" \
@@ -170,7 +170,7 @@ curl -X POST http://localhost:8003/oauth/token \
 #### Refresh Token Grant
 
 ```bash
-curl -X POST http://localhost:8003/oauth/token \
+curl -X POST http://localhost:8003/api/v1/auth/oauth/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=refresh_token" \
   -d "refresh_token=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." \
@@ -317,7 +317,7 @@ Auth Service включает интеграцию SMTP для отправки 
 **POST /api/v1/register** — Регистрация пользователя с отправкой welcome и confirmation email
 
 ```bash
-curl -X POST http://localhost:8003/api/v1/register \
+curl -X POST http://localhost:8003/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "email": "newuser@example.com",
