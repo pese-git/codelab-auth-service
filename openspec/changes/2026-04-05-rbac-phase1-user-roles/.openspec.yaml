@@ -1,0 +1,23 @@
+version: 1.0.0
+status: proposed
+priority: critical
+phase: 1
+title: "RBAC Phase 1: User Roles Management"
+description: |
+  Реализация базовой системы пользовательских ролей с поддержкой в JWT токенах.
+  Включает создание таблиц roles и user_role_mappings, сервисов управления и интеграцию с TokenService.
+
+dependencies: []
+estimated_effort: "2-3 weeks"
+target_completion: "2026-04-26"
+
+features:
+  - User role assignment (admin, user, moderator и custom роли)
+  - Role management API (CRUD операции для администраторов)
+  - JWT payload расширение с полем roles
+  - Database migrations с Alembic
+  - Backward compatibility с существующей scope-based системой
+
+related_specs:
+  - docs/RBAC_SPECIFICATION.md#phase-1-user-roles
+  - docs/TECHNICAL_SPECIFICATION.md#post-mvp-goals

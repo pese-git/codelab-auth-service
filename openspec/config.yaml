@@ -1,20 +1,56 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Project context
+context: |
+  Tech stack: Python 3.12+, FastAPI, PostgreSQL, Redis, JWT (RS256)
+  Domain: OAuth2 Authorization Server with RBAC for CodeLab platform
+  
+  Coding standards:
+  - Вся документация в исходном коде (docstrings, комментарии) должна быть на русском языке
+  - Весь код должен быть покрыт тестами (pytest)
+  - Тесты разрабатываются одновременно с кодом (TDD approach)
+  - Используем type hints для всех функций и методов
+  - Следуем PEP 8 и используем ruff для линтинга
+  - Используем sqlalchemy 2.0+ с async поддержкой
+  
+  Architecture:
+  - OAuth2 + RBAC система управления доступом
+  - Event-driven синхронизация с другими сервисами
+  - Асимметричная криптография (RS256) для JWT подписи
+  - Redis для кеша и token blacklist
+  - PostgreSQL с Alembic миграциями
+  - User isolation через JWT claims (sub, roles, groups)
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+# Per-artifact rules
+rules:
+  proposal:
+    - Описывать проблему, решение и альтернативы
+    - Включать секцию "Non-goals" для ограничения scope
+    - Указывать риски и стратегию их mitigation
+    - Описывать критерии успеха и метрики
+    - Оценивать влияние на существующий код и API compatibility
+  
+  design:
+    - Детально описывать архитектурные решения
+    - Включать диаграммы (mermaid) для компонентов, взаимодействия, БД схемы
+    - Учитывать требования к тестированию и safety
+    - Документировать API контракты (request/response schemas)
+    - Включать acceptance criteria и edge cases
+    - Рассматривать backward compatibility
+  
+  tasks:
+    - Разбивать задачи на блоки максимум 4-6 часов
+    - Каждая задача должна включать написание тестов
+    - Указывать зависимости между задачами
+    - Приоритизировать задачи (Critical/High/Medium/Low)
+    - Включать четкие критерии приемки для каждой задачи
+    - Учитывать интеграцию с существующим кодом
+  
+  specs:
+    - Писать спецификации на русском языке
+    - Включать примеры использования API (curl commands)
+    - Описывать требования к тестовому покрытию
+    - Документировать edge cases, error scenarios, security considerations
+    - Указывать требования к документации в коде
+    - Включать примеры JSON payload и response structures
+    - Описывать требования к миграциям БД если применимо

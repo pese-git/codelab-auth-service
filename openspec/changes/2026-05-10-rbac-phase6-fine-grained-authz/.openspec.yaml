@@ -1,0 +1,30 @@
+version: 1.0.0
+status: proposed
+priority: low
+phase: 6
+title: "RBAC Phase 6: Fine-Grained Authorization (UMA 2.0)"
+description: |
+  Реализация fine-grained авторизации (FGA) с UMA 2.0 поддержкой.
+  Permission-based система разрешений для resource-level доступа.
+  Dynamically управляемые разрешения через Policy Decision Point (PDP).
+
+dependencies: 
+  - "2026-04-05-rbac-phase1-user-roles"
+  - "2026-04-12-rbac-phase2-role-mappers"
+  - "2026-04-19-rbac-phase3-groups"
+  - "2026-04-26-rbac-phase4-composite-roles"
+  - "2026-05-03-rbac-phase5-admin-ui"
+estimated_effort: "4-6 weeks"
+target_completion: "2026-06-21"
+
+features:
+  - Permission-based access control (PBAC)
+  - UMA 2.0 compatible authorization
+  - Policy Decision Point (PDP) engine
+  - Resource permissions management
+  - Dynamic permission evaluation
+  - Consent-based access grants
+
+related_specs:
+  - docs/RBAC_SPECIFICATION.md#phase-6-fine-grained-authz
+  - changes/2026-05-03-rbac-phase5-admin-ui/.openspec.yaml

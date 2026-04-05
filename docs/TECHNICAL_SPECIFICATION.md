@@ -37,12 +37,23 @@ Auth Service интегрируется в существующую микрос
 - ✅ Интегрироваться с существующей инфраструктурой CodeLab
 - ✅ Поддержать горизонтальное масштабирование
 
-### 2.2 Не цели MVP
+### 2.2 Post-MVP цели (Roadmap)
+
+#### RBAC Implementation Phases
+
+Полная спецификация находится в [`docs/RBAC_SPECIFICATION.md`](RBAC_SPECIFICATION.md):
+
+- 📋 **Phase 1: User Roles** (Критично) — базовые роли пользователей и JWT поддержка
+- 📋 **Phase 2: Role Mappers** (Важно) — преобразование ролей при создании JWT для клиентов
+- 📋 **Phase 3: Groups** (Важно) — иерархические организационные группы с path-based идентификацией
+- 📋 **Phase 4: Composite Roles** (Важно) — иерархия ролей (роли содержат другие роли)
+- 📋 **Phase 5: Admin UI** (Важно) — интеграция с codelab-admin-frontend для управления RBAC
+- 📋 **Phase 6: Fine-Grained Authorization** (Опционально) — UMA 2.0 compatible система разрешений
+
+### 2.3 Не цели (MVP и Post-MVP)
 
 - ❌ SSO между внешними системами
 - ❌ Интеграция с внешними OAuth-провайдерами (Google, GitHub и т.д.)
-- ❌ UI для управления пользователями и клиентами
-- ❌ RBAC (Role-Based Access Control) — только scope-based авторизация
 - ❌ Multi-factor authentication (MFA)
 
 ---
@@ -1538,27 +1549,74 @@ Auth Service считается реализованным, если:
 
 ## 15. План развития после MVP
 
-### Фаза 2: Authorization Code Flow
+### RBAC Implementation Roadmap
+
+**Полная спецификация:** [`docs/RBAC_SPECIFICATION.md`](RBAC_SPECIFICATION.md)
+
+#### Phase 1: User Roles (Критично)
+- ✅ Таблицы: `roles`, `user_role_mappings`
+- ✅ JWT: добавить поле `roles`
+- ✅ API endpoints для управления ролями
+- ✅ Предустановленные роли: admin, user, moderator
+- **Сроки:** 2-3 недели
+
+#### Phase 2: Role Mappers (Важно)
+- ✅ Таблица: `role_mappers`
+- ✅ Поддержка типов mappers: role_to_role, hardcoded, conditional
+- ✅ JWT: добавить поле `resource_access`
+- ✅ Логика применения mappers при создании JWT
+- **Сроки:** 2-3 недели
+
+#### Phase 3: Groups (Важно)
+- ✅ Таблицы: `groups`, `user_group_memberships`, `group_role_mappings`
+- ✅ Иерархические группы с path-based идентификацией
+- ✅ Наследование ролей от групп
+- ✅ JWT: добавить поле `groups`
+- **Сроки:** 3-4 недели
+
+#### Phase 4: Composite Roles (Важно)
+- ✅ Таблица: `composite_role_mappings`
+- ✅ Иерархия ролей (роли содержат другие роли)
+- ✅ Алгоритм разворачивания composite roles
+- ✅ JWT: добавить поле `expanded_roles`
+- **Сроки:** 2-3 недели
+
+#### Phase 5: Admin UI (Важно)
+- ✅ Интеграция с codelab-admin-frontend
+- ✅ UI для управления: ролями, groups, mappers, composite roles
+- ✅ Авторизация на уровне UI (только admin)
+- ✅ Responsive дизайн
+- **Сроки:** 4-5 недель
+
+#### Phase 6: Fine-Grained Authorization (Опционально)
+- ✅ UMA 2.0 compatible система
+- ✅ Resources, Policies, Permissions
+- ✅ Authorization Engine
+- ✅ Decision engine для проверки доступа
+- **Сроки:** 6-8 недель
+
+### OAuth2 Flow Extensions (Post-RBAC)
+
+#### Phase 2.1: Authorization Code Flow
 - Реализация Authorization Code Grant + PKCE
 - UI для consent screen
 - Поддержка redirect_uri
 
-### Фаза 3: Client Credentials
+#### Phase 2.2: Client Credentials
 - Межсервисная аутентификация
 - Service accounts
 
-### Фаза 4: RBAC
-- Роли и разрешения
-- Иерархия ролей
-- Admin UI для управления
+### SSO Integration (Post-RBAC)
 
-### Фаза 5: SSO
+#### Phase 3.1: External IdP
 - Интеграция с внешними IdP (Google, GitHub)
 - SAML 2.0 поддержка
 - OpenID Connect
 
-### Фаза 6: Advanced Security
-- Multi-factor authentication (MFA)
+### Advanced Security (Post-RBAC)
+
+#### Phase 4.1: Multi-Factor Authentication
+- MFA implementations
 - Device fingerprinting
 - Anomaly detection
 

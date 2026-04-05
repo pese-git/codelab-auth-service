@@ -1,0 +1,26 @@
+version: 1.0.0
+status: proposed
+priority: high
+phase: 2
+title: "RBAC Phase 2: Role Mappers"
+description: |
+  Реализация системы преобразования ролей (mappers) для специфичных ресурсов.
+  Поддержка 3 типов mappers: role_to_role, hardcoded, conditional.
+  Интеграция resource_access в JWT payload.
+
+dependencies: 
+  - "2026-04-05-rbac-phase1-user-roles"
+estimated_effort: "2-3 weeks"
+target_completion: "2026-05-03"
+
+features:
+  - Role mapper management (3 types: role_to_role, hardcoded, conditional)
+  - Resource-specific role transformation
+  - JWT payload расширение с resource_access field
+  - Role mapper API endpoints
+  - Mapper evaluation engine
+  - Support for multiple OAuth2 clients
+
+related_specs:
+  - docs/RBAC_SPECIFICATION.md#phase-2-role-mappers
+  - changes/2026-04-05-rbac-phase1-user-roles/design.md

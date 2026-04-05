@@ -1,0 +1,29 @@
+version: 1.0.0
+status: proposed
+priority: high
+phase: 3
+title: "RBAC Phase 3: Hierarchical Groups"
+description: |
+  Реализация иерархической организационной структуры через группы.
+  Поддержка path-based идентификации (/org/team/subteam).
+  Наследование ролей от групп.
+  Поддержка groups в JWT payload.
+
+dependencies: 
+  - "2026-04-05-rbac-phase1-user-roles"
+  - "2026-04-12-rbac-phase2-role-mappers"
+estimated_effort: "3-4 weeks"
+target_completion: "2026-05-10"
+
+features:
+  - Hierarchical group structure with path-based identification
+  - Group membership management
+  - Role inheritance from groups
+  - JWT payload extension with groups field
+  - Group-based access control
+  - Path traversal and ancestor queries
+
+related_specs:
+  - docs/RBAC_SPECIFICATION.md#phase-3-groups
+  - changes/2026-04-05-rbac-phase1-user-roles/design.md
+  - changes/2026-04-12-rbac-phase2-role-mappers/.openspec.yaml

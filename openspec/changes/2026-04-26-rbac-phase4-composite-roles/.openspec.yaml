@@ -1,0 +1,27 @@
+version: 1.0.0
+status: proposed
+priority: medium
+phase: 4
+title: "RBAC Phase 4: Composite Roles"
+description: |
+  Реализация иерархии ролей (роли содержат другие роли).
+  Поддержка composite_roles в JWT payload.
+  Наследование разрешений через иерархию.
+
+dependencies: 
+  - "2026-04-05-rbac-phase1-user-roles"
+  - "2026-04-12-rbac-phase2-role-mappers"
+  - "2026-04-19-rbac-phase3-groups"
+estimated_effort: "2 weeks"
+target_completion: "2026-05-17"
+
+features:
+  - Role hierarchy (roles can contain other roles)
+  - Composite role resolution
+  - JWT payload with composite_roles field
+  - Permission inheritance through role hierarchy
+  - Prevent circular role dependencies
+
+related_specs:
+  - docs/RBAC_SPECIFICATION.md#phase-4-composite-roles
+  - changes/2026-04-19-rbac-phase3-groups/.openspec.yaml

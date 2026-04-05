@@ -1,0 +1,29 @@
+version: 1.0.0
+status: proposed
+priority: medium
+phase: 5
+title: "RBAC Phase 5: Admin UI Integration"
+description: |
+  Интеграция RBAC управления с codelab-admin-frontend.
+  Web UI для управления ролями, группами, mappers и всех RBAC компонентов.
+  Визуализация иерархий и зависимостей.
+
+dependencies: 
+  - "2026-04-05-rbac-phase1-user-roles"
+  - "2026-04-12-rbac-phase2-role-mappers"
+  - "2026-04-19-rbac-phase3-groups"
+  - "2026-04-26-rbac-phase4-composite-roles"
+estimated_effort: "3-4 weeks"
+target_completion: "2026-05-24"
+
+features:
+  - Admin UI for role management
+  - Group hierarchy visualization
+  - Role mapper editor
+  - User role assignment interface
+  - Audit log viewer
+  - Permission simulator/tester
+
+related_specs:
+  - docs/RBAC_SPECIFICATION.md#phase-5-admin-ui
+  - changes/2026-04-26-rbac-phase4-composite-roles/.openspec.yaml
